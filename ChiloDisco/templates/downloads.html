@@ -35,7 +35,7 @@
         </div>
       </header>
 
-      <!-- 快捷操作栏 - 两行布局 -->
+      <!-- 快捷操作栏 - 三行布局 -->
       <div class="quick-actions" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
         <!-- 第一行 -->
         <div class="action-card" style="background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center;">
@@ -56,7 +56,26 @@
           <button id="downloadZip" class="btn primary" style="width: 100%; padding: 14px 24px; font-size: 16px;">📥 打包下载 CSV</button>
         </div>
 
-        <!-- 第二行 - 文件夹打包下载 -->
+        <!-- 第二行 - AFL 输出文件夹 -->
+        <div class="action-card" style="background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center;">
+          <div style="width: 100%;">
+            <div style="color: var(--neon-yellow); font-size: 18px; font-weight: 600; margin-bottom: 8px;">📂 AFL Queue</div>
+            <div style="color: var(--text-muted); font-size: 14px; margin-bottom: 6px;">打包 AFL queue 文件夹</div>
+            <div style="color: var(--text-muted); font-size: 13px;">包含所有测试用例</div>
+          </div>
+          <button id="downloadQueue" class="btn primary" style="width: 100%; padding: 14px 24px; font-size: 16px;">📥 打包下载</button>
+        </div>
+
+        <div class="action-card" style="background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center;">
+          <div style="width: 100%;">
+            <div style="color: var(--neon-red); font-size: 18px; font-weight: 600; margin-bottom: 8px;">💥 AFL Crashes</div>
+            <div style="color: var(--text-muted); font-size: 14px; margin-bottom: 6px;">打包 AFL crashes 文件夹</div>
+            <div style="color: var(--text-muted); font-size: 13px;">包含所有崩溃测试用例</div>
+          </div>
+          <button id="downloadCrashes" class="btn primary" style="width: 100%; padding: 14px 24px; font-size: 16px;">📥 打包下载</button>
+        </div>
+
+        <!-- 第三行 - Chilo 文件夹 -->
         <div class="action-card" style="background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center;">
           <div style="width: 100%;">
             <div style="color: var(--neon-purple); font-size: 18px; font-weight: 600; margin-bottom: 8px;">📁 解析SQL打包</div>
@@ -88,7 +107,7 @@
           <div style="width: 100%;">
             <div style="color: var(--neon-pink); font-size: 18px; font-weight: 600; margin-bottom: 8px;">📦 全部打包</div>
             <div style="color: var(--text-muted); font-size: 14px; margin-bottom: 6px;">打包所有输出文件</div>
-            <div style="color: var(--text-muted); font-size: 13px;">包括日志、CSV、SQL等所有文件</div>
+            <div style="color: var(--text-muted); font-size: 13px;">包括日志、CSV、SQL、AFL等所有文件</div>
           </div>
           <button id="downloadAll" class="btn primary" style="width: 100%; padding: 14px 24px; font-size: 16px;">📥 打包全部</button>
         </div>
@@ -272,12 +291,22 @@
     const btnParsedSQL = document.getElementById('downloadParsedSQL');
     const btnGeneratedMutator = document.getElementById('downloadGeneratedMutator');
     const btnStructuralSQL = document.getElementById('downloadStructuralSQL');
+    const btnQueue = document.getElementById('downloadQueue');
+    const btnCrashes = document.getElementById('downloadCrashes');
     const btnAll = document.getElementById('downloadAll');
 
     btnPlot.addEventListener('click', ()=>{ window.location.href = '/api/download/plot_data'; });
     btnZip.addEventListener('click', ()=>{ window.location.href = '/api/download/csv/zip'; });
     
-    // 文件夹打包下载
+    // AFL 文件夹打包下载
+    btnQueue.addEventListener('click', ()=>{ 
+      window.location.href = '/api/download/folder/queue'; 
+    });
+    btnCrashes.addEventListener('click', ()=>{ 
+      window.location.href = '/api/download/folder/crashes'; 
+    });
+    
+    // Chilo 文件夹打包下载
     btnParsedSQL.addEventListener('click', ()=>{ 
       window.location.href = '/api/download/folder/parsed_sql'; 
     });

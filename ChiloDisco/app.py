@@ -836,6 +836,66 @@ def download_structural_sql():
     return send_file(buf, as_attachment=True, download_name=f'chilo_structural_sql_{ts}.zip')
 
 
+@app.route('/api/download/folder/queue')
+def download_queue():
+    import zipfile
+    out_dir = _fuzz_output_dir()
+    if not out_dir:
+        return abort(404, description='AFL 输出目录未配置')
+    
+    # 优先 default/queue，回退 defaut/queue
+    queue_path = os.path.join(out_dir, 'default', 'queue')
+    if not os.path.exists(queue_path):
+        queue_path = os.path.join(out_dir, 'defaut', 'queue')
+    
+    if not os.path.exists(queue_path):
+        return abort(404, description='queue 文件夹不存在')
+    
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(queue_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, queue_path)
+                try:
+                    zf.write(file_path, arcname=arcname)
+                except Exception:
+                    pass
+    buf.seek(0)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return send_file(buf, as_attachment=True, download_name=f'afl_queue_{ts}.zip')
+
+
+@app.route('/api/download/folder/crashes')
+def download_crashes():
+    import zipfile
+    out_dir = _fuzz_output_dir()
+    if not out_dir:
+        return abort(404, description='AFL 输出目录未配置')
+    
+    # 优先 default/crashes，回退 defaut/crashes
+    crash_path = os.path.join(out_dir, 'default', 'crashes')
+    if not os.path.exists(crash_path):
+        crash_path = os.path.join(out_dir, 'defaut', 'crashes')
+    
+    if not os.path.exists(crash_path):
+        return abort(404, description='crashes 文件夹不存在')
+    
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(crash_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, crash_path)
+                try:
+                    zf.write(file_path, arcname=arcname)
+                except Exception:
+                    pass
+    buf.seek(0)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return send_file(buf, as_attachment=True, download_name=f'afl_crashes_{ts}.zip')
+
+
 @app.route('/api/download/all')
 def download_all():
     import zipfile
@@ -886,6 +946,36 @@ def download_all():
                 zf.write(plot_path, arcname=os.path.join('plot', os.path.basename(plot_path)))
             except Exception:
                 pass
+        
+        # AFL queue 文件夹
+        out_dir = _fuzz_output_dir()
+        if out_dir:
+            queue_path = os.path.join(out_dir, 'default', 'queue')
+            if not os.path.exists(queue_path):
+                queue_path = os.path.join(out_dir, 'defaut', 'queue')
+            if os.path.exists(queue_path):
+                for root, dirs, files in os.walk(queue_path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.join('afl_queue', os.path.relpath(file_path, queue_path))
+                        try:
+                            zf.write(file_path, arcname=arcname)
+                        except Exception:
+                            pass
+            
+            # AFL crashes 文件夹
+            crash_path = os.path.join(out_dir, 'default', 'crashes')
+            if not os.path.exists(crash_path):
+                crash_path = os.path.join(out_dir, 'defaut', 'crashes')
+            if os.path.exists(crash_path):
+                for root, dirs, files in os.walk(crash_path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.join('afl_crashes', os.path.relpath(file_path, crash_path))
+                        try:
+                            zf.write(file_path, arcname=arcname)
+                        except Exception:
+                            pass
     
     buf.seek(0)
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')

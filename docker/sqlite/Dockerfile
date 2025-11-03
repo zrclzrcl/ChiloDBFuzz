@@ -48,6 +48,17 @@ RUN chmod +w /etc/sudoers && \
 USER chilo
 WORKDIR /home
 
+#先搞定squirrel的第三方库 absl
+RUN git clone https://github.com/abseil/abseil-cpp.git && cd abseil-cpp && mkdir build && cd build && \
+    cmake -DCMAKE_CXX_STANDARD=17 \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -DABSL_BUILD_TESTING=OFF \
+          -DBUILD_SHARED_LIBS=ON \
+          .. && \
+    make -j$(nproc) && \
+    sudo make install && \
+    sudo ldconfig
+
 RUN git clone https://github.com/zrclzrcl/ChiloDBFuzz.git
 
 #搞定AFL++
