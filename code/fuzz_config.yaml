@@ -7,6 +7,6 @@ CHILO_MUTATOR_PATH: "./"
 FUZZ_TIME: 7210
 
 IS_USE_SQUIRREL: True #是否使用Squirrel进行变异
-SQUIRREL_LIB_PATH: "./Squirrel/libsqlite_mutator.so"
-SQUIRREL_CONFIG_PATH: "./Squirrel/config.yaml"
+SQUIRREL_LIB_PATH: "./SQUIRREL/libsqlite_mutator.so"
+SQUIRREL_CONFIG_PATH: "./SQUIRREL/config_sqlite.yml"
 

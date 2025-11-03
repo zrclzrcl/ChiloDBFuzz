@@ -386,12 +386,15 @@ class ChiloFactory:
         self.main_logger.info(
             f"种子编号：{seed_id} 被选择次数：{self.all_seed_list.seed_list[seed_id].chose_time}")
 
-        if self.all_seed_list.seed_list[seed_id].chose_time % self.times_to_structural_mutator == 0:
-            self.main_logger.info(f"种子编号：{seed_id} 达到结构化变异标准，进行结构化变异")
-            #说明进行一次结构性变异
-            self.structural_mutator_list.put({"seed_id":seed_id , "mutate_time":mutate_time})
-            self.main_logger.info(f"种子编号：{seed_id} 已放入结构化变异队列等待变异，变异次数为{mutate_time}")
-            
+        if self.structural_mutator_thread_count > 0:
+            if self.all_seed_list.seed_list[seed_id].chose_time % self.times_to_structural_mutator == 0:
+                
+                    self.main_logger.info(f"种子编号：{seed_id} 达到结构化变异标准，进行结构化变异")
+                    #说明进行一次结构性变异
+                    self.structural_mutator_list.put({"seed_id":seed_id , "mutate_time":mutate_time})
+                    self.main_logger.info(f"种子编号：{seed_id} 已放入结构化变异队列等待变异，变异次数为{mutate_time}")
+        else:
+            self.main_logger.warning(f"结构化变异器线程数为0，跳过结构化变异")
 
         self.main_logger.info(f"种子编号：{seed_id} 准备进入解析队列")
         #然后直接加入到待parse中
