@@ -28,10 +28,10 @@ def main():
     os.environ["AFL_DISABLE_TRIM"] = "1"    #禁用剪裁
     os.environ["AFL_FAST_CAL"] = "1"    #禁用初期多次执行种子时的路径校准
     
-    # 配置 ASAN 运行时选项
+    # 配置 ASAN 运行时选项（用于 fuzzing）
     os.environ["ASAN_OPTIONS"] = (
         "detect_leaks=0:"                    # 禁用泄漏检测（避免 fuzzing 误报）
-        "symbolize=1:"                       # 符号化栈回溯（可读的崩溃报告）
+        "symbolize=0:"                       # 禁用符号化（fuzzing 阶段优先性能）
         "abort_on_error=1:"                  # 发现错误立即崩溃（AFL 需要）
         "allocator_may_return_null=1:"       # 允许 malloc 失败返回 NULL
         "handle_segv=1:"                     # 捕获段错误
