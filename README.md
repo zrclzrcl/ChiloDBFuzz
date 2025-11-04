@@ -11,16 +11,16 @@
 ChiloDBFuzz的镜像需要从dockerfile构建，下面是具体的构建命令。（首先您要确定本机的docker已经被正确安装）
 
 根据被测对象不同，构建命令略有区别，请根据被测对象进行选择。
-我们默认的各DBMS版本选择，基本同SQLRight论文
-参考文献：Detecting Logical Bugs of DBMS with Coverage-based Guidance
-SQLite：3.34.0
-MySQL：8.0.27
-PostgreSQL:14.0
-对于SQLRight不支持，但SQUIRREL支持的DBMS的版本选择，则选择SQUIRREL论文中选择的版本
+我们默认的各DBMS版本选择，基本同SQUIRREL论文
 参考文献：Squirrel: Testing Database Management Systems with Language Validity and Coverage Feedback
+SQLite：3.30.1
+MySQL：8.0.0
 MariaDB：10.5.3
+对于PostgreSQL SQUIRREL中没有注明使用的DBMS版本，我们选择的版本为SQLRight论文中的相同版本
+参考文献：Detecting Logical Bugs of DBMS with Coverage-based Guidance
+PostgreSQL:14.0
 
-对于SQUIRREL和SQLRight都不原生支持的新DBMS，我们选择最新的版本
+对于SQUIRREL和SQLRight都不原生支持的DBMS，我们选择最新的版本
 DuckDB：...
 
 
@@ -35,6 +35,7 @@ docker build -t chilodbfuzz:sqlite .
 ```bash
 #下面语句请在主机终端1运行
 docker run -it --privileged -p 5173:5173 --name sqlite_chilofuzz_test chilodbfuzz:sqlite /bin/bash
+
 # 请首先编写config.yaml以及fuzz_config.yaml
 vim ./config.yaml
 echo core | sudo tee /proc/sys/kernel/core_pattern
