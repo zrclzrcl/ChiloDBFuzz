@@ -59,7 +59,12 @@ RUN git clone https://github.com/abseil/abseil-cpp.git && cd abseil-cpp && mkdir
     sudo make install && \
     sudo ldconfig
 
-RUN git clone https://github.com/zrclzrcl/ChiloDBFuzz.git
+# 构建参数：用于打破缓存（传递 git commit hash 或时间戳）
+ARG CACHEBUST=1
+
+# 克隆或更新 ChiloDBFuzz 仓库
+RUN git clone https://github.com/zrclzrcl/ChiloDBFuzz.git || true
+RUN cd ChiloDBFuzz && git fetch origin && git reset --hard origin/main
 
 #搞定AFL++
 RUN cd /home/ChiloDBFuzz && git submodule update --init && \
