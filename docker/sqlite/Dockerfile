@@ -66,23 +66,32 @@ RUN cd /home/ChiloDBFuzz && git submodule update --init && \
     cd AFLplusplus && LLVM_CONFIG=llvm-config-15 make -j$(nproc)
 
 # 构建sqlite
-ARG CFLAGS="-DSQLITE_MAX_LENGTH=128000000 -DSQLITE_MAX_SQL_LENGTH=128000000 -DSQLITE_MAX_MEMORY=25000000 -DSQLITE_PRINTF_PRECISION_LIMIT=1048576 -DSQLITE_DEBUG=1 -DSQLITE_MAX_PAGE_COUNT=16384"
-
-RUN git clone https://github.com/sqlite/sqlite sqlite3/ && cd sqlite3 && git checkout version-3.30.0 && mkdir bld
+RUN git clone https://github.com/sqlite/sqlite sqlite3/ && cd sqlite3 && git checkout version-3.34.0 && mkdir bld
 WORKDIR /home/sqlite3/bld
+
+# 用 AFL 编译器但不启用 ASAN（避免构建工具出错）
 ENV CC=/home/ChiloDBFuzz/AFLplusplus/afl-cc
 ENV CXX=/home/ChiloDBFuzz/AFLplusplus/afl-c++
-# ENV AFL_USE_ASAN=1
 RUN ../configure && make -j && make sqlite3.c
 
-RUN $CC $CFLAGS -I. -c \
+# 为 fuzz target 定义编译选项（带 ASAN）
+ENV AFL_USE_ASAN=1
+ENV ASAN_CFLAGS="-fsanitize=address -DSQLITE_MAX_LENGTH=128000000 -DSQLITE_MAX_SQL_LENGTH=128000000 -DSQLITE_MAX_MEMORY=25000000 -DSQLITE_PRINTF_PRECISION_LIMIT=1048576 -DSQLITE_DEBUG=1 -DSQLITE_MAX_PAGE_COUNT=16384"
+ENV ASAN_LDFLAGS="-fsanitize=address"
+
+# 重新编译带 ASAN 的 sqlite3.o
+RUN $CC $ASAN_CFLAGS -I. -c sqlite3.c -o sqlite3_asan.o
+
+# 编译 fuzz target（带 ASAN）
+RUN $CC $ASAN_CFLAGS -I. -c \
     /home/sqlite3/test/ossfuzz.c -o /home/sqlite3/test/ossfuzz.o
-RUN $CC $CFLAGS -I. -c \
+RUN $CC $ASAN_CFLAGS -I. -c \
     /home/sqlite3/test/ossshell.c -o /home/sqlite3/test/ossshell.o
 
-RUN $CXX $CXXFLAGS \
-    /home/sqlite3/test/ossfuzz.o /home/sqlite3/test/ossshell.o -o /home/ossfuzz \
-   ./sqlite3.o -ldl -pthread
+# 链接最终的 fuzz target（带 ASAN）
+RUN $CXX $ASAN_LDFLAGS \
+    /home/sqlite3/test/ossfuzz.o /home/sqlite3/test/ossshell.o sqlite3_asan.o \
+    -o /home/ossfuzz -ldl -pthread
 
 #搞定disco
 WORKDIR /home/ChiloDBFuzz/ChiloDisco/frontend

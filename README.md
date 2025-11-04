@@ -1,5 +1,5 @@
 # ChiloDBFuzz
-（目前正在开发中！）
+（目前正在开发中！非本项目开发人员请勿使用，当前阶段使用出现的一切后果自负...）
     
 （dev-ing）
 ## 简体中文
@@ -11,6 +11,18 @@
 ChiloDBFuzz的镜像需要从dockerfile构建，下面是具体的构建命令。（首先您要确定本机的docker已经被正确安装）
 
 根据被测对象不同，构建命令略有区别，请根据被测对象进行选择。
+我们默认的各DBMS版本选择，基本同SQLRight论文
+参考文献：Detecting Logical Bugs of DBMS with Coverage-based Guidance
+SQLite：3.34.0
+MySQL：8.0.27
+PostgreSQL:14.0
+对于SQLRight不支持，但SQUIRREL支持的DBMS的版本选择，则选择SQUIRREL论文中选择的版本
+参考文献：Squirrel: Testing Database Management Systems with Language Validity and Coverage Feedback
+MariaDB：10.5.3
+
+对于SQUIRREL和SQLRight都不原生支持的新DBMS，我们选择最新的版本
+DuckDB：...
+
 
 SQLite：
 ```bash
