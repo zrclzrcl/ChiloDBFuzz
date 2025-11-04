@@ -66,18 +66,21 @@ RUN cd /home/ChiloDBFuzz && git submodule update --init && \
     cd AFLplusplus && LLVM_CONFIG=llvm-config-15 make -j$(nproc)
 
 # 构建sqlite
-RUN git clone https://github.com/sqlite/sqlite sqlite3/ && cd sqlite3 && git checkout version-3.34.0 && mkdir bld
+RUN git clone https://github.com/sqlite/sqlite sqlite3/ && cd sqlite3 && git checkout version-3.30.1 && mkdir bld
 WORKDIR /home/sqlite3/bld
 
 # 用 AFL 编译器但不启用 ASAN（避免构建工具出错）
-ENV CC=/home/ChiloDBFuzz/AFLplusplus/afl-cc
-ENV CXX=/home/ChiloDBFuzz/AFLplusplus/afl-c++
+ENV CC=/home/ChiloDBFuzz/AFLplusplus/afl-clang-fast
+ENV CXX=/home/ChiloDBFuzz/AFLplusplus/afl-clang-fast++
 RUN ../configure && make -j && make sqlite3.c
 
-# 为 fuzz target 定义编译选项（带 ASAN）
+# 为 fuzz target 定义编译选项（带 ASAN + 调试优化）
 ENV AFL_USE_ASAN=1
-ENV ASAN_CFLAGS="-fsanitize=address -DSQLITE_MAX_LENGTH=128000000 -DSQLITE_MAX_SQL_LENGTH=128000000 -DSQLITE_MAX_MEMORY=25000000 -DSQLITE_PRINTF_PRECISION_LIMIT=1048576 -DSQLITE_DEBUG=1 -DSQLITE_MAX_PAGE_COUNT=16384"
-ENV ASAN_LDFLAGS="-fsanitize=address"
+ENV ASAN_CFLAGS="-fsanitize=address -g -O1 -fno-omit-frame-pointer \
+    -DSQLITE_MAX_LENGTH=128000000 -DSQLITE_MAX_SQL_LENGTH=128000000 \
+    -DSQLITE_MAX_MEMORY=25000000 -DSQLITE_PRINTF_PRECISION_LIMIT=1048576 \
+    -DSQLITE_DEBUG=1 -DSQLITE_MAX_PAGE_COUNT=16384"
+ENV ASAN_LDFLAGS="-fsanitize=address -g"
 
 # 重新编译带 ASAN 的 sqlite3.o
 RUN $CC $ASAN_CFLAGS -I. -c sqlite3.c -o sqlite3_asan.o
