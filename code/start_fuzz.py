@@ -13,7 +13,7 @@ def main():
     fuzzer_path = config["FUZZER_PATH"]
     fuzz_time = config["FUZZ_TIME"]
     chilo_mutator_path = config["CHILO_MUTATOR_PATH"]
-
+    is_use_chilo = config["IS_USE_CHILO"]
     is_use_squirrel = config["IS_USE_SQUIRREL"]
     squirrel_lib_path = config["SQUIRREL_LIB_PATH"]
     squirrel_config_path = config["SQUIRREL_CONFIG_PATH"]
@@ -27,8 +27,10 @@ def main():
     os.environ["AFL_CUSTOM_MUTATOR_ONLY"] = "1" #只使用客制化变异器
     os.environ["AFL_DISABLE_TRIM"] = "1"    #禁用剪裁
     os.environ["AFL_FAST_CAL"] = "1"    #禁用初期多次执行种子时的路径校准
-    os.environ["PYTHONPATH"] = chilo_mutator_path
-    os.environ["AFL_PYTHON_MODULE"] = "ChiloMutate"
+    
+    if is_use_chilo:
+        os.environ["PYTHONPATH"] = chilo_mutator_path
+        os.environ["AFL_PYTHON_MODULE"] = "ChiloMutate"
 
     if is_use_squirrel:
         if not os.path.exists(squirrel_config_path):
@@ -42,6 +44,8 @@ def main():
         os.environ["AFL_CUSTOM_MUTATOR_LIBRARY"]= squirrel_lib_path
         os.environ["SQUIRREL_CONFIG"] = squirrel_config_path
 
+    if not is_use_chilo and not is_use_squirrel:
+        raise Exception("Please set IS_USE_CHILO or IS_USE_SQUIRREL to True")
 
     #3. 启动FUZZ
     if target_dbms == "SQLite":
