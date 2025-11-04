@@ -28,6 +28,17 @@ def main():
     os.environ["AFL_DISABLE_TRIM"] = "1"    #禁用剪裁
     os.environ["AFL_FAST_CAL"] = "1"    #禁用初期多次执行种子时的路径校准
     
+    # 配置 ASAN 运行时选项
+    os.environ["ASAN_OPTIONS"] = (
+        "detect_leaks=0:"                    # 禁用泄漏检测（避免 fuzzing 误报）
+        "symbolize=1:"                       # 符号化栈回溯（可读的崩溃报告）
+        "abort_on_error=1:"                  # 发现错误立即崩溃（AFL 需要）
+        "allocator_may_return_null=1:"       # 允许 malloc 失败返回 NULL
+        "handle_segv=1:"                     # 捕获段错误
+        "handle_sigbus=1:"                   # 捕获总线错误
+        "print_summary=0"                    # 减少输出噪音
+    )
+    
     if is_use_chilo:
         os.environ["PYTHONPATH"] = chilo_mutator_path
         os.environ["AFL_PYTHON_MODULE"] = "ChiloMutate"
