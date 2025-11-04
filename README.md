@@ -28,7 +28,7 @@ SQLite：
 ```bash
 cd {repo_path}
 cd ./docker/sqlite
-docker build -t chilodbfuzz:sqlite .
+docker build --build-arg CACHEBUST=$(date +%s) -t chilodbfuzz:sqlite .
 ```
 
 ### docker容器启动
