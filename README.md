@@ -32,13 +32,24 @@ ChiloDBFuzz的镜像需要从dockerfile构建，下面是具体的构建命令�
 
 
 SQLite：
+
+如果想要运行CHILO/SQUIRREL
 ```bash
 cd {repo_path}
 cd ./docker/sqlite
 docker build --build-arg CACHEBUST=$(date +%s) -t chilodbfuzz:sqlite .
 ```
 
-### docker容器启动
+如果想要运行CLCC
+```bash
+cd {repo_path}
+cd ./docker/sqlite
+docker build -t clccdbfuzz:sqlite -f clcc_dockerfile .
+```
+
+### 容器启动和测试启动
+
+SQLite (SQUIRREL/CHILO):
 ```bash
 #下面语句请在主机终端1运行
 docker run -it --privileged -p 5173:5173 --name sqlite_chilofuzz_test chilodbfuzz:sqlite /bin/bash
@@ -53,8 +64,18 @@ cd ../ChiloDisco/ && python3 app.py  #启动ChiloDisco后端
 
 #下面请在主机终端3运行
 docker exec -it sqlite_chilofuzz_test bash
-cd ../ChiloDisco/frontend/ && npm run dev -- --host 0.0.0.0
+cd ../ChiloDisco/frontend/ && npm run dev -- --host 0.0.0.0 --port 5173
 
 #下面请在主机终端1运行
 python3 start_fuzz.py
 ```
+
+SQLite (CLCC):
+```bash
+#下面请在终端1运行
+docker run -it --privileged --cpuset-cpus="0,1" --name sqlite_clcc_test clccdbfuzz:sqlite /bin/bash
+
+#下面请在终端2运行
+docker exec -it sqlite_clcc_test bash
+```
+

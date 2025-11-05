@@ -7,3 +7,4 @@ output/
 .vscode
 ChiloDisco/frontend/node_modules/
 ChiloDisco/__pycache__
+crash_analysis.md
