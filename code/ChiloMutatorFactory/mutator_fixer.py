@@ -249,7 +249,7 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                                                       semantic_error_count, semantic_error_llm_use_time, semantic_error_llm_count,
                                                       semantic_llm_format_error, semantic_up_token_all, semantic_down_token_all, 
                                                       my_chilo_factory.fix_mutator_list.qsize(), False)
-                    continue  # 跳过任务发布，直接处理下一个变异器
+                    break  # 跳出内层循环，外层循环会处理下一个变异器
                 
                 my_chilo_factory.mutator_fixer_logger.info(
                     f"[线程{thread_id}]seed_id：{fix_seed_id}，试运行失败，出现语法错误，准备进行第 {syntax_error_count} 次语法修复")
