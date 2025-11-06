@@ -59,12 +59,11 @@ RUN git clone https://github.com/abseil/abseil-cpp.git && cd abseil-cpp && mkdir
     sudo make install && \
     sudo ldconfig
 
-# 构建参数：用于打破缓存（传递 git commit hash 或时间戳）
-ARG CACHEBUST=1
+#用于打断cache！
+ADD ./clcc_dockerfile /tmp/clcc_dockerfile
 
 # 克隆或更新 ChiloDBFuzz 仓库（强制使用 CACHEBUST）
-RUN echo "Cache bust: ${CACHEBUST}" && \
-    git clone https://github.com/zrclzrcl/ChiloDBFuzz.git
+RUN git clone https://github.com/zrclzrcl/ChiloDBFuzz.git
 
 #搞定AFL++
 RUN cd /home/ChiloDBFuzz && git submodule update --init && \
