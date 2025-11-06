@@ -30,6 +30,7 @@ def main():
     os.environ["AFL_CUSTOM_MUTATOR_ONLY"] = "1" #只使用客制化变异器
     os.environ["AFL_DISABLE_TRIM"] = "1"    #禁用剪裁
     os.environ["AFL_FAST_CAL"] = "1"    #禁用初期多次执行种子时的路径校准
+    os.environ["AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES"] = "1"    #禁用警告
     
     # 配置 ASAN 运行时选项（用于 fuzzing）
     os.environ["ASAN_OPTIONS"] = (
