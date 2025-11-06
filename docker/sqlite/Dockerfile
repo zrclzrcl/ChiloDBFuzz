@@ -4,7 +4,7 @@ LABEL maintainer="ZRCL"
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update && apt-get -y install \
-    make cmake build-essential sudo git \
+    make cmake build-essential gdb sudo git \
     tcl8.6 tcl8.6-tdbc-sqlite3 \
     clang-15 llvm-15 lld ninja-build pkg-config \
     libpq-dev libyaml-cpp-dev wget bzip2 ca-certificates \
@@ -47,7 +47,7 @@ RUN chmod +w /etc/sudoers && \
 
 USER chilo
 WORKDIR /home
-
+RUN mkdir ./crashes
 #先搞定squirrel的第三方库 absl
 RUN git clone https://github.com/abseil/abseil-cpp.git && cd abseil-cpp && mkdir build && cd build && \
     cmake -DCMAKE_CXX_STANDARD=17 \
@@ -83,7 +83,7 @@ ENV AFL_USE_ASAN=1
 ENV ASAN_CFLAGS="-fsanitize=address -g -O1 -fno-omit-frame-pointer \
     -DSQLITE_MAX_LENGTH=128000000 -DSQLITE_MAX_SQL_LENGTH=128000000 \
     -DSQLITE_MAX_MEMORY=25000000 -DSQLITE_PRINTF_PRECISION_LIMIT=1048576 \
-    -DSQLITE_MAX_PAGE_COUNT=16384"
+    -DSQLITE_DEBUG=1 -DSQLITE_MAX_PAGE_COUNT=16384"
 ENV ASAN_LDFLAGS="-fsanitize=address -g"
 
 # 重新编译带 ASAN 的 sqlite3.o
