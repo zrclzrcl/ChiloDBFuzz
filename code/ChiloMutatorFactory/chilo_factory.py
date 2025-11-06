@@ -44,6 +44,8 @@ class ChiloFactory:
         self.mutator_fixer_log_path = config['LOG']['MUTATOR_FIXER_LOG_PATH']
         self.llm_log_path = config['LOG']['LLM_LOG_PATH']
 
+        self.fuzz_count_time = config['OTHERS']['FUZZ_COUNT_TIME']  #fuzz_count函数调用多少次fuzz()
+
         self.target_dbms = config['TARGET']['DBMS']     #目标DBMS
         self.target_dbms_version = config['TARGET']['DBMS_VERSION'] #目标版本
 
