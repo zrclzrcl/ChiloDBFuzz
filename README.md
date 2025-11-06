@@ -37,7 +37,7 @@ SQLite：
 ```bash
 cd {repo_path}
 cd ./docker/sqlite
-docker build --build-arg CACHEBUST=$(date +%s) -t chilodbfuzz:sqlite .
+docker build -t chilodbfuzz:sqlite .
 ```
 
 如果想要运行CLCC
@@ -77,5 +77,6 @@ docker run -it --privileged --cpuset-cpus="0,1" --name sqlite_clcc_test clccdbfu
 
 #下面请在终端2运行
 docker exec -it sqlite_clcc_test bash
+
 ```
 
