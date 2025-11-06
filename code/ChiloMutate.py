@@ -78,9 +78,9 @@ def fuzz_count(buf):
     """
     global fuzz_count_number
     fuzz_count_number += 1
-    mutate_time = chilo_factory.fuzz_count_time
     #应该采用队列的设计，先放入工厂的队列中，等待加工
     global chilo_factory
+    mutate_time = chilo_factory.fuzz_count_time
     chilo_factory.main_logger.info("进入fuzz_count~")
     chilo_factory.main_logger.info("准备将buf中种子加入到待解析队列中~")
     chilo_factory.add_one_seed_to_parse_list(buf, mutate_time)
