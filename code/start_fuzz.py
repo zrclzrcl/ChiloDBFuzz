@@ -7,16 +7,19 @@ def main():
     with open("./fuzz_config.yaml", "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    target_dbms = config["TARGET_DBMS"]
-    output_dir = config["OUTPUT_DIR"]
-    input_dir = config["INPUT_DIR"]
-    fuzzer_path = config["FUZZER_PATH"]
-    fuzz_time = config["FUZZ_TIME"]
-    chilo_mutator_path = config["CHILO_MUTATOR_PATH"]
-    is_use_chilo = config["IS_USE_CHILO"]
-    is_use_squirrel = config["IS_USE_SQUIRREL"]
-    squirrel_lib_path = config["SQUIRREL_LIB_PATH"]
-    squirrel_config_path = config["SQUIRREL_CONFIG_PATH"]
+    target_dbms = config["TARGET_DBMS"]     #目标DBMS
+    output_dir = config["OUTPUT_DIR"]     #输出目录
+    input_dir = config["INPUT_DIR"]     #输入目录
+    fuzzer_path = config["FUZZER_PATH"]     #fuzzer路径
+    fuzz_time = config["FUZZ_TIME"]     #fuzz的时间（s）
+    chilo_mutator_path = config["CHILO_MUTATOR_PATH"]     #CHILO变异器路径
+    is_use_chilo = config["IS_USE_CHILO"]     #是否使用CHILO变异器
+    is_use_squirrel = config["IS_USE_SQUIRREL"]     #是否使用Squirrel变异器
+    squirrel_lib_path = config["SQUIRREL_LIB_PATH"]     #Squirrel变异器库路径
+    squirrel_config_path = config["SQUIRREL_CONFIG_PATH"]     #Squirrel变异器配置文件路径
+
+    testcase_time_limit = config["TESTCASE_TIME_LIMIT"]     #测试用例的时间限制（s）
+    testcase_memory_limit = config["TESTCASE_MEMORY_LIMIT"]     #测试用例的内存限制（MB）
 
     can_fuzz_dbms_list = ["SQLite"]
 
@@ -61,9 +64,9 @@ def main():
     #3. 启动FUZZ
     if target_dbms == "SQLite":
         if fuzz_time < 0:
-            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} -- /home/ossfuzz @@"
+            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} -m {testcase_memory_limit} -t {testcase_time_limit} -- /home/ossfuzz @@"
         else:
-            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} -V {fuzz_time}  -- /home/ossfuzz @@"
+            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} -m {testcase_memory_limit} -t {testcase_time_limit} -V {fuzz_time}  -- /home/ossfuzz @@"
     else:
         raise Exception(f"Unsupported DBMS, plz check fuzz_config.yaml. TARGET_DBMS must in {can_fuzz_dbms_list}")
 
