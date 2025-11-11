@@ -528,7 +528,7 @@ body:not(.performance-mode)::after {
     0 0 30px rgba(139, 92, 246, 0.3),
     0 12px 40px rgba(0, 0, 0, 0.6),
     inset 0 0 60px rgba(0, 240, 255, 0.1);
-  animation: none;
+  animation-play-state: paused;
   z-index: 10;
   position: relative;
 }

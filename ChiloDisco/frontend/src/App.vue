@@ -9,7 +9,7 @@
         <a class="active" href="/">日志监控</a>
         <a href="/plot">数据大屏</a>
         <a href="/downloads">结果下载</a>
-        <a href="#">系统设置</a>
+        <a href="/settings" @click.prevent="goSettings">系统设置</a>
       </nav>
     </aside>
 
@@ -74,10 +74,14 @@
 <script setup>
 import { onMounted, ref, reactive, watch, nextTick, onBeforeUnmount } from 'vue'
 
-const interval = ref(2000)
-const maxLines = ref(500)
+// 从 localStorage 恢复用户的刷新频率和显示行数设置
+const savedInterval = typeof localStorage !== 'undefined' ? localStorage.getItem('cd_interval') : null
+const savedMaxLines = typeof localStorage !== 'undefined' ? localStorage.getItem('cd_maxLines') : null
+const interval = ref(savedInterval ? parseInt(savedInterval, 10) : 2000)
+const maxLines = ref(savedMaxLines ? parseInt(savedMaxLines, 10) : 500)
 const panels = reactive([])
 let timer = null
+function goSettings(){ try{ window.location.href = '/settings' }catch(_){} }
 
 // 日志键名中文映射
 const logNameMap = {
@@ -313,8 +317,14 @@ function start(){
 }
 function stop(){ if (timer) { clearInterval(timer); timer=null; } }
 
-watch(interval, () => start())
-watch(maxLines, () => fetchLogs())
+watch(interval, (newVal) => {
+  try{ localStorage.setItem('cd_interval', String(newVal)) }catch(_){ /* ignore */ }
+  start()
+})
+watch(maxLines, (newVal) => {
+  try{ localStorage.setItem('cd_maxLines', String(newVal)) }catch(_){ /* ignore */ }
+  fetchLogs()
+})
 
   onMounted(() => {
   fetchLogs()
