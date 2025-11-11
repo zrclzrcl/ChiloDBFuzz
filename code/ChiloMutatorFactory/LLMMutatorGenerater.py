@@ -222,13 +222,15 @@ Create a Python module that implements aggressive, crash-inducing mutations for 
 def chilo_mutator_generator(my_chilo_factory: ChiloFactory):
     my_chilo_factory.mutator_generator_logger.info("变异器生成器启动成功")
     while True:
+        # 采用阻塞方式从上游取任务，取消轮询
+        generate_target = my_chilo_factory.wait_mutator_generate_list.get()
+
         all_start_time = time.time()
         all_up_token = 0
         all_down_token = 0
         llm_count = 0
         llm_error_count = 0
         my_chilo_factory.mutator_generator_logger.info("接收变异器生成任务中~")
-        generate_target = my_chilo_factory.wait_mutator_generate_list.get()    #拿一个需要生成变异器的
         my_chilo_factory.mutator_generator_logger.info(f"变异器生成任务接收完毕 任务目标   seed_id：{generate_target['seed_id']}    变异次数：{generate_target['mutate_time']}")
         mutate_time = generate_target['mutate_time']
         parsed_sql = my_chilo_factory.all_seed_list.seed_list[generate_target['seed_id']].parser_content   #拿出对应的已经解析过的内容
@@ -266,6 +268,7 @@ def chilo_mutator_generator(my_chilo_factory: ChiloFactory):
         if mutator_code_success:
             my_chilo_factory.mutator_generator_logger.info(
                 f"seed_id：{generate_target['seed_id']}  LLM生成变异器代码提取成功，准备放入待修复队列")
+            # 使用阻塞 put，将任务放入下游修复队列
             my_chilo_factory.fix_mutator_list.put({"seed_id" : generate_target['seed_id'], "mutate_time" : mutate_time, "mutator_code": mutator_code})
             my_chilo_factory.mutator_generator_logger.info(
                 f"seed_id：{generate_target['seed_id']}  变异器放入修复队列成功")

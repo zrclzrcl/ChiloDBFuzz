@@ -4,6 +4,8 @@
 """
 import os
 import time
+import queue
+from collections import deque
 
 from .chilo_factory import ChiloFactory
 
@@ -185,31 +187,112 @@ Please annotate the following SQL for fuzzing {target_dbms} version {dbms_versio
 def chilo_parser(chilo_factory: ChiloFactory):
     #这里需要单独启动一个线程，用于对SQL进行处理
     chilo_factory.parser_logger.info("解析器启动成功！")
+    
+    # 初始化本地栈（有界栈，自动淘汰栈底）
+    MAX_STACK_SIZE = chilo_factory.parser_stack_max_size
+    local_stack = deque(maxlen=MAX_STACK_SIZE)
+    # 维护一个无界回流队列，用于承接被栈淘汰的种子
+    reflow_queue = deque()
+    # 交替来源：True 表示优先从栈取，False 表示优先从回流队列取
+    use_stack_next = True
+    chilo_factory.parser_logger.info(f"Parser栈初始化完成，最大大小：{MAX_STACK_SIZE}")
+    
     while True:
-        #首先要尝试从工厂的待parse的队列中取一个
+        # === 步骤1: 尝试从wait_parse_list中取出一个种子，压入栈中 ===
+        try:
+            parse_target = chilo_factory.wait_parse_list.get(timeout=0.1)
+            seed_id = parse_target['seed_id']
+            
+            # 检查栈是否会满（即将淘汰）
+            if len(local_stack) >= MAX_STACK_SIZE:
+                victim = local_stack[0] if local_stack else None  # 栈底（最老的）
+                if victim:
+                    evicted_total = chilo_factory.record_parser_eviction()
+                    chilo_factory.parser_logger.warning(
+                        f"Parser栈已满，淘汰栈底种子{victim['seed_id']} "
+                        f"(已淘汰总数:{evicted_total})"
+                    )
+            
+            # 压栈（deque会自动淘汰最老的）
+            local_stack.append(parse_target)
+            # 如发生淘汰，则将被淘汰的种子回流到无界队列中
+            if 'victim' in locals() and victim:
+                reflow_queue.append(victim)
+                chilo_factory.parser_logger.info(
+                    f"Parser: 淘汰种子{victim['seed_id']}已回流到队列 "
+                    f"(回流队列大小:{len(reflow_queue)})"
+                )
+            chilo_factory.parser_logger.info(
+                f"Parser: 种子{seed_id}已压栈 (栈大小:{len(local_stack)}/{MAX_STACK_SIZE})"
+            )
+        except queue.Empty:
+            pass  # 没有新种子，继续执行
+        
+        # === 步骤2: 检查下游队列wait_mutator_generate_list是否已满 ===
+        if chilo_factory.wait_mutator_generate_list.full():
+            # 下游已满，什么都不做（不解析，省API）
+            if local_stack:
+                chilo_factory.parser_logger.debug(
+                    f"Parser: 下游队列已满，暂停解析 "
+                    f"(栈中待处理:{len(local_stack)}, 下游队列:{chilo_factory.wait_mutator_generate_list.qsize()}/{chilo_factory.mutator_generator_queue_max_size})"
+                )
+            time.sleep(0.1)  # 短暂等待，避免CPU空转
+            continue
+        
+        # === 步骤3: 下游有空位，交替从“栈/回流队列”取出一个种子解析 ===
+        source = None
+        # 按优先来源选择
+        if use_stack_next and local_stack:
+            source = 'stack'
+        elif (not use_stack_next) and reflow_queue:
+            source = 'reflow'
+        else:
+            # 若优先来源为空，则尝试另一个来源
+            if local_stack:
+                source = 'stack'
+            elif reflow_queue:
+                source = 'reflow'
+            else:
+                # 两个来源都为空，继续下一轮
+                continue
+
+        # 实际取出
+        if source == 'stack':
+            parse_target = local_stack.pop()  # LIFO
+        else:
+            parse_target = reflow_queue.popleft()  # FIFO
+        # 翻转优先来源以实现交替
+        use_stack_next = not use_stack_next
+
+        seed_id = parse_target['seed_id']
+        chilo_factory.parser_logger.info(
+            (f"Parser: 从栈弹出种子{seed_id}进行解析 (栈剩余:{len(local_stack)}, 回流队列:{len(reflow_queue)})"
+             if source == 'stack' else
+             f"Parser: 从回流队列取出种子{seed_id}进行解析 (栈剩余:{len(local_stack)}, 回流队列:{len(reflow_queue)})")
+        )
+        
+        # === 步骤4: 开始解析流程 ===
         all_start_time = time.time()
         llm_usd_time_all = 0
         up_token_all = 0
         down_token_all = 0
         llm_use_count = 0
         llm_format_error_count = 0
-        chilo_factory.parser_logger.info("解析器正在等待解析任务~")
-        parse_target = chilo_factory.wait_parse_list.get()
-        chilo_factory.parser_logger.info(f"解析任务获取成功：seed_id:{parse_target['seed_id']}")
-        #取一个之后，判断该目标是否已经被解析过
-        if chilo_factory.all_seed_list.seed_list[parse_target['seed_id']].is_parsed:
-            #说明已经被解析过了，则将这个种子加入待变异队列
-            chilo_factory.parser_logger.info(f"seed_id:{parse_target['seed_id']} 已经被解析过，正在放入变异器生成队列")
+        
+        # 判断该目标是否已经被解析过
+        if chilo_factory.all_seed_list.seed_list[seed_id].is_parsed:
+            # 说明已经被解析过了，直接将这个种子加入待变异队列
+            chilo_factory.parser_logger.info(f"seed_id:{seed_id} 已经被解析过，正在放入变异器生成队列")
             chilo_factory.wait_mutator_generate_list.put(parse_target)
-            chilo_factory.parser_logger.info(f"seed_id:{parse_target['seed_id']} 放入变异器生成队列成功")
+            chilo_factory.parser_logger.info(f"seed_id:{seed_id} 放入变异器生成队列成功")
             tmp_seed_is_fuzz_flag_for_csv = 1
         else:
-            #说明还没有被解析过，需要先进行解析...
-            chilo_factory.parser_logger.info(f"seed_id:{parse_target['seed_id']} 没有被解析过，进入解析过程")
-            need_parse_sql = chilo_factory.all_seed_list.seed_list[parse_target['seed_id']].seed_sql
+            # 说明还没有被解析过，需要先进行解析...
+            chilo_factory.parser_logger.info(f"seed_id:{seed_id} 没有被解析过，进入解析过程")
+            need_parse_sql = chilo_factory.all_seed_list.seed_list[seed_id].seed_sql
             while True:
                 parse_start_time = time.time()
-                chilo_factory.parser_logger.info(f"seed_id:{parse_target['seed_id']} 调用LLM解析开始")
+                chilo_factory.parser_logger.info(f"seed_id:{seed_id} 调用LLM解析开始")
                 prompt = _get_constant_prompt(need_parse_sql, chilo_factory.target_dbms, chilo_factory.target_dbms_version)
                 parse_msg, up_token, down_token = chilo_factory.llm_tool_parser.chat_llm(prompt)
                 up_token_all += up_token
@@ -217,7 +300,7 @@ def chilo_parser(chilo_factory: ChiloFactory):
                 parser_end_time = time.time()
                 llm_use_count += 1
                 chilo_factory.parser_logger.info(
-                    f"seed_id:{parse_target['seed_id']} LLM解析结束，用时：{parser_end_time - parse_start_time:.2f}s")
+                    f"seed_id:{seed_id} LLM解析结束，用时：{parser_end_time - parse_start_time:.2f}s")
                 llm_usd_time_all += parser_end_time - parse_start_time
                 parse_msg = chilo_factory.llm_tool_parser.get_sql_block_content(parse_msg)
                 try:
@@ -225,34 +308,37 @@ def chilo_parser(chilo_factory: ChiloFactory):
                     break
                 except:
                     llm_format_error_count += 1
-                    chilo_factory.parser_logger.warning(f"seed_id:{parse_target['seed_id']} LLM解析内容提取失败，LLM生成格式错误（第{llm_format_error_count}次），重新解析...")
+                    chilo_factory.parser_logger.warning(f"seed_id:{seed_id} LLM解析内容提取失败，LLM生成格式错误（第{llm_format_error_count}次），重新解析...")
                     # 检查是否超过最大重试次数
                     if llm_format_error_count >= chilo_factory.llm_format_error_max_retry:
-                        chilo_factory.parser_logger.error(f"seed_id:{parse_target['seed_id']} 解析格式错误次数超过上限{chilo_factory.llm_format_error_max_retry}，放弃该种子")
+                        chilo_factory.parser_logger.error(f"seed_id:{seed_id} 解析格式错误次数超过上限{chilo_factory.llm_format_error_max_retry}，放弃该种子")
                         parse_msg = need_parse_sql  # 使用原始SQL作为fallback
                         break
             chilo_factory.parser_logger.info(
-                f"seed_id:{parse_target['seed_id']} LLM解析内容提取成功")
-            save_parsed_sql_path = os.path.join(chilo_factory.parsed_sql_path, f"{parse_target['seed_id']}.txt")
+                f"seed_id:{seed_id} LLM解析内容提取成功")
+            save_parsed_sql_path = os.path.join(chilo_factory.parsed_sql_path, f"{seed_id}.txt")
             chilo_factory.parser_logger.info(
-                f"seed_id:{parse_target['seed_id']} 解析结果存入文件中")
+                f"seed_id:{seed_id} 解析结果存入文件中")
             with open(save_parsed_sql_path, "w", encoding="utf-8") as f:
                 f.write(parse_msg)  #保存到文件中
             chilo_factory.parser_logger.info(
-                f"seed_id:{parse_target['seed_id']} 解析结果存入文件成功")
-            chilo_factory.all_seed_list.seed_list[parse_target['seed_id']].parser_content = parse_msg
-            chilo_factory.all_seed_list.seed_list[parse_target['seed_id']].is_parsed = True
-            #然后要将这个加入到待变异中
+                f"seed_id:{seed_id} 解析结果存入文件成功")
+            chilo_factory.all_seed_list.seed_list[seed_id].parser_content = parse_msg
+            chilo_factory.all_seed_list.seed_list[seed_id].is_parsed = True
+            # 然后要将这个加入到待变异中
             chilo_factory.parser_logger.info(
-                f"seed_id:{parse_target['seed_id']} 准备加入到变异器待生成队列中")
+                f"seed_id:{seed_id} 准备加入到变异器待生成队列中")
             chilo_factory.wait_mutator_generate_list.put(parse_target)
             tmp_seed_is_fuzz_flag_for_csv = 0
-            chilo_factory.parser_logger.info(f"seed_id:{parse_target['seed_id']} 放入变异器生成队列成功")
+            chilo_factory.parser_logger.info(f"seed_id:{seed_id} 放入变异器生成队列成功")
             chilo_factory.parser_logger.info(f"-"*10)
+        
+        # === 步骤5: 记录CSV ===
         left_parser_queue_size = chilo_factory.wait_parse_list.qsize()
         all_end_time = time.time()
-        chilo_factory.write_parser_csv(all_end_time, parse_target['seed_id'], parse_target['mutate_time'],
+        evicted_seed_total = chilo_factory.get_parser_evicted_seed_count()
+        chilo_factory.write_parser_csv(all_end_time, seed_id, parse_target['mutate_time'],
                                        tmp_seed_is_fuzz_flag_for_csv, llm_usd_time_all, up_token_all, down_token_all,
                                        llm_use_count, llm_format_error_count, all_end_time-all_start_time,
-                                       chilo_factory.all_seed_list.seed_list[parse_target['seed_id']].chose_time,
-                                       left_parser_queue_size)
+                                       chilo_factory.all_seed_list.seed_list[seed_id].chose_time,
+                                       left_parser_queue_size, evicted_seed_total)

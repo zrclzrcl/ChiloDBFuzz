@@ -85,7 +85,36 @@ def fuzz_count(buf):
     chilo_factory.main_logger.info("准备将buf中种子加入到待解析队列中~")
     chilo_factory.add_one_seed_to_parse_list(buf, mutate_time)
     chilo_factory.main_logger.info("该种子fuzz_count处理完成")
-    return mutate_time   #为快速迭代，目前可配置
+    # 优先：如果有结构化变异待执行，则直接返回1
+    q_struct = chilo_factory.wait_exec_structural_list
+    with q_struct.mutex:
+        if len(q_struct.queue) > 0:
+            chilo_factory.next_fuzz_strategy = 0
+            return 1
+
+    # 否则：根据 wait_exec_mutator_list 前缀中连续同一对象实例的个数返回
+    q = chilo_factory.wait_exec_mutator_list
+    with q.mutex:
+        internal = list(q.queue)  # 拷贝当前快照
+    if not internal:
+        #到这里判断，变异器池是否为空，如果为空，说明是模糊测试刚启动的状态，则默认先用待执行队列，让fuzz mutate_once去等待待执行队列去
+        if chilo_factory.mutator_pool.mutator_list.len() > 0:
+            #说明并非刚启动，变异器池已经有东西了
+            chilo_factory.next_fuzz_strategy = 2
+            return mutate_time
+        else:
+            #说明刚启动，需要让mutate_once等一等
+            chilo_factory.next_fuzz_strategy = 0
+            return 0    #AFL++暂时跳过，等待一下... 
+    first_item = internal[0]
+    consecutive = 1
+    for item in internal[1:]:
+        if item is first_item:
+            consecutive += 1
+        else:
+            break
+    chilo_factory.next_fuzz_strategy = 1
+    return consecutive    #这里就是待执行变异器，需要返回连续的个数
 
 def splice_optout():
     """
@@ -139,11 +168,21 @@ def fuzz(buf, add_buf, max_size):
     now_seed_id = chilo_factory.all_seed_list.index_of_seed_buf(buf)
 
     fuzz_end_time = time.time()
+    queue_size = chilo_factory.wait_exec_mutator_list.qsize()
     chilo_factory.write_main_csv(fuzz_end_time, fuzz_count_number, fuzz_number,
                                  is_random, fuzz_end_time - fuzz_start_time, now_seed_id, seed_id, mutator_id,
-                                 chilo_factory.wait_exec_mutator_list.qsize(), ori_mutate_out_size,
+                                 queue_size, ori_mutate_out_size,
                                  real_mutate_out_size, is_cut, is_error_occur, is_from_structural_mutator)
     return mutated_out
+
+
+def post_run():
+    """
+    在每次变异后，读取覆盖率信息
+    :return: 无返回值
+    """
+    global chilo_factory
+    pass
 
 #当AFL++停止或结束的时候调用该函数，进行清理
 def deinit():  # optional for Python

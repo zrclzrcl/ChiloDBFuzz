@@ -16,6 +16,7 @@ from . import llm_tool
 from . import seed
 from . import ChiloMutator
 from . import logger
+from . import ChiloCoverage
 
 class ChiloFactory:
     """
@@ -29,6 +30,8 @@ class ChiloFactory:
         self.start_time = time.time()
         self.config_file_path = config_file_path
 
+        self.next_fuzz_strategy = 0 #在fuzzcount确定策略，在fuzz选择指定的策略执行，0就是结构化，1就是待执行变异器，2就是变异器池
+
         with open(self.config_file_path, "r", encoding="utf-8") as f:   #读配置文件
             config = yaml.safe_load(f)
         
@@ -36,6 +39,7 @@ class ChiloFactory:
         self.mutator_id_lock = threading.Lock()  # 保护 mutator_id 分配
         self.mutator_pool_lock = threading.Lock()  # 保护 mutator_pool 操作
         self.csv_lock = threading.Lock()  # 保护 CSV 文件写入
+        self.parser_evicted_seed_lock = threading.Lock()  # 保护 parser 淘汰计数
 
         self.main_log_path = config['LOG']['MAIN_LOG_PATH']   #主日志
         self.parser_log_path = config['LOG']['PARSER_LOG_PATH']   #解析器日志
@@ -49,11 +53,21 @@ class ChiloFactory:
         self.target_dbms = config['TARGET']['DBMS']     #目标DBMS
         self.target_dbms_version = config['TARGET']['DBMS_VERSION'] #目标版本
 
+        self.mutator_generator_queue_max_size = config['OTHERS']['MUTATOR_GENERATOR_QUEUE_MAX_SIZE']
+        if not isinstance(self.mutator_generator_queue_max_size, int) or self.mutator_generator_queue_max_size <= 0:
+            raise ValueError("配置项 OTHERS.MUTATOR_GENERATOR_QUEUE_MAX_SIZE 必须为大于 0 的整数")
+
+        self.parser_stack_max_size = config['OTHERS']['PARSER_STACK_MAX_SIZE']
+        if not isinstance(self.parser_stack_max_size, int) or self.parser_stack_max_size <= 0:
+            raise ValueError("配置项 OTHERS.PARSER_STACK_MAX_SIZE 必须为大于 0 的整数")
+
         self.wait_parse_list = queue.Queue()   #等待SQL解析的队列
-        self.wait_mutator_generate_list = queue.Queue()    #等待变异器生成的队列
+        self.wait_mutator_generate_list = queue.Queue(maxsize=self.mutator_generator_queue_max_size)    #等待变异器生成的队列
         self.wait_exec_mutator_list = queue.Queue() #等待执行的队列
         self.structural_mutator_list = queue.Queue()    #等待结构性变异的队列
-        self.fix_mutator_list = queue.Queue()   #等待修复队列
+        # 变异器修复队列使用有界队列，便于在上游进行背压判断
+        self.fix_mutator_queue_max_size = config['OTHERS']['FIX_MUTATOR_QUEUE_MAX_SIZE']
+        self.fix_mutator_list = queue.Queue(maxsize=self.fix_mutator_queue_max_size)   #等待修复队列
         self.wait_exec_structural_list = queue.Queue()   #等待执行结构性变异的队列 (优先)
 
         self.parsed_sql_path = config['FILE_PATH']['PARSED_SQL_PATH']
@@ -62,6 +76,8 @@ class ChiloFactory:
         self.mutator_fix_tmp_path = config['FILE_PATH']['MUTATOR_FIX_TMP_PATH']
         self.mutator_pool = ChiloMutator.ChiloMutatorPool(self.generated_mutator_path)  #一个变异器池
         self.all_seed_list = seed.AFLSeedList() #收到的所有seed的列表
+
+        self.parser_evicted_seed_count = 0  # 全局统计被淘汰的种子数量
 
 
         self.fix_mutator_try_time = config['OTHERS']['FIX_MUTATOR_TRY_TIME']
@@ -124,6 +140,8 @@ class ChiloFactory:
             self.llm_logger
         )
 
+        # 初始化 AFL++ 覆盖率读取器
+        self.coverage_reader = ChiloCoverage.AFLCoverageReader()
 
     def init_file_path(self):
         """
@@ -189,8 +207,7 @@ class ChiloFactory:
             writer.writerow(["real_time", "relative_time", "seed_id",
                              "need_mutate_count", "is_parsed", "LLM_use_time",
                              "up_token", "down_token", "LLM_count", "LLM_format_error_count",
-                             "all_use_time", "select_count","left_parser_queue_count"])
-
+                             "all_use_time", "select_count","left_parser_queue_count", "evicted_seed_total"])
         with open(self.mutator_fixer_csv_path, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(["real_time", "relative_time", "seed_id", "mutator_id",
@@ -222,6 +239,23 @@ class ChiloFactory:
             writer.writerow(["real_time", "relative_time", "seed_id", "use_all_time", "llm_use_time",
                              "llm_up_token", "llm_down_token", "llm_count",
                              "llm_error_count", "left_mutator_generate_queue_count"])
+                             
+    def record_parser_eviction(self):
+        """
+        Parser 栈淘汰一个种子时调用，返回当前全局淘汰总数
+        """
+        with self.parser_evicted_seed_lock:
+            self.parser_evicted_seed_count += 1
+            return self.parser_evicted_seed_count
+
+    def get_parser_evicted_seed_count(self):
+        """
+        获取当前全局被淘汰的种子总数
+        """
+        with self.parser_evicted_seed_lock:
+            return self.parser_evicted_seed_count
+
+
     def write_mutator_generator_csv(self, real_time, seed_id,
                                     use_all_time, llm_use_time, llm_up_token, llm_down_token,
                                     llm_count, llm_error_count, left_mutator_generate_queue_count):
@@ -280,7 +314,7 @@ class ChiloFactory:
     def write_parser_csv(self, real_time, seed_id, need_mutate_count, is_parsed, llm_time,
                          up_token, down_token,  llm_count,
                          llm_format_error_count, all_time, select_count,
-                         left_parser_queue_count):
+                         left_parser_queue_count, evicted_seed_total):
         """
         向parser的csv中写入一行
         :param left_parser_queue_count: 队列中排队的个数
@@ -295,6 +329,7 @@ class ChiloFactory:
         :param llm_time: LLM调用所用时间
         :param all_time: 完整过程所用时间
         :param select_count: 当前种子被选中的次数
+        :param evicted_seed_total: 全局累计被淘汰的种子数量
         :return: 无
         """
         with self.csv_lock:  # 加锁保护CSV写入
@@ -303,7 +338,7 @@ class ChiloFactory:
                 writer.writerow([real_time, real_time - self.start_time, seed_id,
                                  need_mutate_count, is_parsed, llm_time, up_token,
                                  down_token,llm_count, llm_format_error_count, all_time, select_count,
-                                 left_parser_queue_count])
+                                 left_parser_queue_count, evicted_seed_total])
 
     def write_mutator_fixer_csv(self,real_time, seed_id,  all_use_time, mutator_id, need_mutate_count,
                                 all_llm_count, syntax_use_time, syntax_error_count, syntax_format_error_time,
@@ -416,33 +451,27 @@ class ChiloFactory:
         is_first_time = True
         is_by_random = None
         #先尝试从结构化变异队列中取出一个变异好的测试用例
-        try:
-            self.main_logger.info("尝试从结构化变异队列中取出一个变异好的测试用例")
-            mutator = self.wait_exec_structural_list.get_nowait()
-            is_from_structural_mutator = True
-        except queue.Empty:
-            self.main_logger.info("结构化变异队列为空，准备从变异器池中随机选择一个")
-            is_from_structural_mutator = False
-        if not is_from_structural_mutator:
-            while True:
-                if is_first_time:
-                    self.main_logger.info("准备执行一次待变异任务队列中的变异任务")
-                    is_first_time = False
-                try:
-                    mutator = self.wait_exec_mutator_list.get_nowait()
-                    self.main_logger.info("从任务列表中获取任务成功！")
-                    is_by_random = False
-                except queue.Empty:
-                    # 队列为空，改为从变异器池中随机选择一个
-                    self.main_logger.info("从任务列表为空，准备从变异池随机选择")
-                    mutator = self.mutator_pool.random_select_mutator()
-                    self.main_logger.info("变异池随机选择成功！")
-                    is_by_random = True
-                if mutator is not None:
-                    break
-                self.main_logger.warning("变异池与任务列表均为空！进入等待！！")
+        match self.next_fuzz_strategy:
+            case 0:
+                #结构化变异
+                self.main_logger.info(f"next_fuzz_strategy: {self.next_fuzz_strategy} 从结构化变异队列中取出一个变异好的测试用例")
+                mutator = self.wait_exec_structural_list.get()
+                is_from_structural_mutator = True
+                is_by_random = None
+
+            case 1:
+                #待执行变异器
+                self.main_logger.info(f"next_fuzz_strategy: {self.next_fuzz_strategy} 从待执行变异器队列中取出一个变异器")
+                is_from_structural_mutator = False
                 mutator = self.wait_exec_mutator_list.get()
-                break
+                is_by_random = False
+                
+            case 2:
+                #变异器池
+                self.main_logger.info(f"next_fuzz_strategy: {self.next_fuzz_strategy} 从变异器池中随机取出一个变异器")
+                is_from_structural_mutator = False
+                is_by_random = True
+                mutator = self.mutator_pool.random_select_mutator()
 
         assert mutator is not None
         if is_from_structural_mutator:
