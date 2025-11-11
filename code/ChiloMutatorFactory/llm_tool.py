@@ -53,10 +53,10 @@ class LLMTool:
                         {"role": "user", "content": prompt}
                     ]
                 )
-                self.logger.info(f"LLM工具已实例化，第{count_now}次请求成功并结束，用时：{time.time()-start_time:.2f}s")
+                self.logger.info(f"第{count_now}次请求成功并结束，用时：{time.time()-start_time:.2f}s")
                 return response.choices[0].message.content, response.usage.prompt_tokens, response.usage.completion_tokens
             except Exception as e:
-                self.logger.info(f"LLM工具已实例化，第{count_now}次请求失败！错误信息：{e}")
+                self.logger.info(f"第{count_now}次请求失败！错误信息：{e}")
                 self.logger.info(f"正在重试第{count_now}次请求")
                 continue
 

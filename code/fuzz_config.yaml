@@ -9,6 +9,7 @@ IS_USE_CHILO: True #是否使用Chilo进行变异
 IS_USE_SQUIRREL: True #是否使用Squirrel进行变异
 SQUIRREL_LIB_PATH: "./SQUIRREL/libsqlite_mutator.so"
 SQUIRREL_CONFIG_PATH: "./SQUIRREL/config_sqlite.yml"
+MAPSIZE: 131072
 
 TESTCASE_TIME_LIMIT: none     #测试用例的时间限制（s）
 TESTCASE_MEMORY_LIMIT: none     #测试用例的内存限制（MB），使用ASAN时必须设置为none

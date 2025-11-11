@@ -12,14 +12,12 @@ from ctypes import c_void_p, c_int, POINTER, c_uint8, c_char_p
 
 # Constants
 SHM_ENV_VAR = "__AFL_SHM_ID"
-MAP_SIZE_POW2 = 16
-MAP_SIZE = 1 << MAP_SIZE_POW2  # 65536 bytes (64KB) by default
+
 
 # Try to get map size from environment (AFL++ may set this)
-try:
-    MAP_SIZE = int(os.environ.get("AFL_MAP_SIZE", MAP_SIZE))
-except (ValueError, TypeError):
-    MAP_SIZE = 1 << MAP_SIZE_POW2
+
+MAP_SIZE = int(os.environ.get("AFL_MAP_SIZE"))
+
 
 
 class AFLCoverageReader:
@@ -30,8 +28,15 @@ class AFLCoverageReader:
         self.map_ptr = None
         self.map_size = MAP_SIZE
         self._libc = None
+        self._attached = False
         self._init_libc()
-        self._attach_shm()
+        # Defer attaching to shared memory until first use
+    
+    def _ensure_attached(self):
+        """Attach to shared memory on first access"""
+        if not self._attached:
+            self._attach_shm()
+            self._attached = True
     
     def _init_libc(self):
         """Initialize libc for system calls"""
@@ -160,6 +165,7 @@ class AFLCoverageReader:
         Returns:
             bytes: Coverage bitmap (typically 65536 bytes)
         """
+        self._ensure_attached()
         if self.map_ptr is None or self.map_ptr == -1:
             raise RuntimeError("Shared memory not attached")
         

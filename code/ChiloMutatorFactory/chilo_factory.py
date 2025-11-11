@@ -11,7 +11,7 @@ import time
 import threading
 
 import yaml
-
+from . import ChiloBitMap
 from . import llm_tool
 from . import seed
 from . import ChiloMutator
@@ -74,6 +74,8 @@ class ChiloFactory:
         self.generated_mutator_path = config['FILE_PATH']['GENERATED_MUTATOR_PATH']
         self.structural_mutator_path = config['FILE_PATH']['STRUCTURAL_MUTATE_PATH']   #结构化变异的文件路径
         self.mutator_fix_tmp_path = config['FILE_PATH']['MUTATOR_FIX_TMP_PATH']
+        self.bitmap_path = config['FILE_PATH']['BITMAP']
+
         self.mutator_pool = ChiloMutator.ChiloMutatorPool(self.generated_mutator_path)  #一个变异器池
         self.all_seed_list = seed.AFLSeedList() #收到的所有seed的列表
 
@@ -143,6 +145,8 @@ class ChiloFactory:
         # 初始化 AFL++ 覆盖率读取器
         self.coverage_reader = ChiloCoverage.AFLCoverageReader()
 
+        self.bitmap = ChiloBitMap.BitMap(self.coverage_reader.map_size) #总mapsize图
+
     def init_file_path(self):
         """
         根据配置文件中的文件路径，准备并初始化好文件
@@ -189,6 +193,7 @@ class ChiloFactory:
         structural_mutator_csv_dir =  os.path.dirname(self.structural_mutator_csv_path)
         parser_csv_dir =  os.path.dirname(self.parser_csv_path)
         mutator_generator_csv_dir =  os.path.dirname(self.mutator_generator_csv_path)
+        bitmap_dir =  os.path.dirname(self.bitmap_path)
         os.makedirs(main_log_dir, exist_ok=True)  # 不存在就自动创建
         os.makedirs(parser_log_dir, exist_ok=True)  # 不存在就自动创建
         os.makedirs(mutator_generator_log_dir, exist_ok=True)  # 不存在就自动创建
@@ -201,6 +206,7 @@ class ChiloFactory:
         os.makedirs(parser_csv_dir, exist_ok=True)
         os.makedirs(main_csv_dir, exist_ok=True)
         os.makedirs(mutator_generator_csv_dir, exist_ok=True)
+        os.makedirs(bitmap_dir, exist_ok=True)
 
         with open(self.parser_csv_path, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
@@ -406,6 +412,32 @@ class ChiloFactory:
                                  llm_count, llm_format_error_count, llm_use_time,
                                  left_structural_mutate_queue_count])
 
+    def write_bitmap(self):
+        """
+        以覆盖式的方式，向bitmap文件写入当前的bitmap
+        从self.bitmap中得到当前的三种bitmap并写入
+        """
+        base_dir = self.bitmap_path
+
+        def _atomic_write_text_array(path, arr):
+            tmp_path = f"{path}.tmp"
+            # 写入为逗号分隔的整型文本，末尾换行
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(",".join(str(int(v)) for v in arr))
+                f.write("\n")
+            # 原子替换，避免读到中间状态
+            os.replace(tmp_path, path)
+
+        sum_arr = self.bitmap.get_sum_bitmap()
+        cum_arr = self.bitmap.get_cumulative_bitmap()
+        bool_arr = self.bitmap.get_bool_bitmap()
+
+        _atomic_write_text_array(os.path.join(base_dir, "sum.txt"), sum_arr)
+        _atomic_write_text_array(os.path.join(base_dir, "cumulative.txt"), cum_arr)
+        _atomic_write_text_array(os.path.join(base_dir, "bool.txt"), bool_arr)
+
+        if hasattr(self, "main_logger"):
+            self.main_logger.info("三种bitmap已存储")
 
 
     def add_one_seed_to_parse_list(self, seed_buf, mutate_time):

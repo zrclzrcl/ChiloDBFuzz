@@ -17,7 +17,7 @@ def main():
     is_use_squirrel = config["IS_USE_SQUIRREL"]     #是否使用Squirrel变异器
     squirrel_lib_path = config["SQUIRREL_LIB_PATH"]     #Squirrel变异器库路径
     squirrel_config_path = config["SQUIRREL_CONFIG_PATH"]     #Squirrel变异器配置文件路径
-
+    mapsize = config["MAPSIZE"]     #AFL++的mapsize
     testcase_time_limit = config["TESTCASE_TIME_LIMIT"]     #测试用例的时间限制（s）
     testcase_memory_limit = config["TESTCASE_MEMORY_LIMIT"]     #测试用例的内存限制（MB）
 
@@ -31,6 +31,7 @@ def main():
     os.environ["AFL_DISABLE_TRIM"] = "1"    #禁用剪裁
     os.environ["AFL_FAST_CAL"] = "1"    #禁用初期多次执行种子时的路径校准
     os.environ["AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES"] = "1"    #禁用警告
+    os.environ["AFL_MAP_SIZE"] = str(mapsize)
     
     # 配置 ASAN 运行时选项（用于 fuzzing）
     os.environ["ASAN_OPTIONS"] = (
