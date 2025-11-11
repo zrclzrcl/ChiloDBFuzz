@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css" />
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="/static/js/toast.js"></script>
 </head>
 <body>
   <canvas id="globalParticles"></canvas>
@@ -22,7 +23,7 @@
         <a class="active" href="/">日志监控</a>
         <a href="/plot">数据大屏</a>
         <a href="/downloads">结果下载</a>
-        <a href="#">系统设置</a>
+        <a href="/settings">系统设置</a>
       </nav>
     </aside>
 
@@ -32,8 +33,11 @@
           <span class="subtitle">AFL++ Custom Mutator · 实时日志监控</span>
         </div>
         <div class="controls">
+          <button class="btn" @click="togglePause" :title="paused ? '继续刷新' : '暂停刷新'">
+            {{ paused ? '▶️ 继续' : '⏸️ 暂停' }}
+          </button>
           <label>刷新频率</label>
-          <select v-model.number="interval">
+          <select v-model.number="interval" :disabled="paused">
             <option :value="200">0.2s</option>
             <option :value="500">0.5s</option>
             <option :value="1000">1s</option>
@@ -51,9 +55,37 @@
         </div>
       </header>
 
+      <!-- 搜索工具栏 -->
+      <div class="search-toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            v-model="searchQuery" 
+            placeholder="搜索日志内容... (支持正则表达式)"
+            class="search-input"
+            @keydown.escape="searchQuery = ''"
+          />
+          <button v-if="searchQuery" @click="searchQuery = ''" class="clear-btn" title="清除搜索">✕</button>
+        </div>
+        <div class="search-stats" v-if="searchQuery">
+          <span class="match-count">{{ totalMatches }} 条匹配</span>
+        </div>
+        <div class="filter-toggles">
+          <label class="toggle-label" title="只显示包含错误的行">
+            <input type="checkbox" v-model="filterError" />
+            <span>🔴 仅错误</span>
+          </label>
+          <label class="toggle-label" title="只显示包含警告的行">
+            <input type="checkbox" v-model="filterWarn" />
+            <span>🟡 仅警告</span>
+          </label>
+        </div>
+      </div>
+
       <main class="grid">
         {% raw %}
-        <section class="card" v-for="panel in panels" :key="panel.key" :style="{ '--h': panel.hue }">
+        <section class="card" v-for="panel in filteredPanels" :key="panel.key" :style="{ '--h': panel.hue }">
           <header class="card-header">
             <div class="name">{{ getDisplayName(panel.key) }}</div>
             <div class="file">{{ panel.filename }}</div>
@@ -61,9 +93,12 @@
               <span class="mtime" :title="'最近修改：' + panel.mtimeText">{{ panel.mtimeText }}</span>
               <span class="size" :title="'大小：' + panel.sizeText">{{ panel.sizeText }}</span>
               <span class="recency-dot" :title="'新鲜度：' + panel.bucketLabel" :style="{ color: panel.accent }"></span>
+              <span v-if="panel.matchCount > 0" class="match-badge" title="匹配行数">{{ panel.matchCount }}</span>
             </div>
           </header>
-          <pre class="log-body" ref="scrollers"><code class="log-lines" v-html="panel.html"></code></pre>
+          <pre class="log-body" ref="scrollers" @dblclick="copyLogContent($event, panel)">
+            <code class="log-lines" v-html="panel.displayHtml"></code>
+          </pre>
         </section>
         {% endraw %}
       </main>
@@ -86,6 +121,33 @@
   </div>
 
   <script src="/static/js/app.js"></script>
+  <script>
+    // 全局快捷键支持
+    document.addEventListener('keydown', (e) => {
+      // Space - 暂停/继续刷新
+      if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        const app = document.querySelector('#app').__vueParentComponent?.ctx;
+        if (app && app.togglePause) app.togglePause();
+      }
+      
+      // Ctrl+F - 搜索
+      if (e.ctrlKey && e.key === 'f') {
+        e.preventDefault();
+        const searchInput = document.querySelector('.search-input');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+      }
+      
+      // Ctrl+S - 打开设置
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        window.location.href = '/settings';
+      }
+    });
+  </script>
   <script>
     // 霓虹粒子特效 - 高密度可见版
     (function() {

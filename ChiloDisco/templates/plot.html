@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="/static/js/toast.js"></script>
 </head>
 <body>
   <canvas id="globalParticles"></canvas>
@@ -22,7 +23,7 @@
         <a href="/">日志监控</a>
         <a class="active" href="/plot">数据大屏</a>
         <a href="/downloads">结果下载</a>
-        <a href="#">系统设置</a>
+        <a href="/settings">系统设置</a>
       </nav>
     </aside>
 
@@ -41,6 +42,14 @@
             <option value="2000">2s</option>
             <option value="5000">5s</option>
           </select>
+          <div class="export-menu">
+            <button id="exportBtn" class="btn">📥 导出</button>
+            <div class="export-dropdown" id="exportDropdown">
+              <button onclick="exportChart()">📊 导出图表 (PNG)</button>
+              <button onclick="exportData()">📄 导出数据 (CSV)</button>
+              <button onclick="exportAll()">📦 全部导出</button>
+            </div>
+          </div>
           <span id="dataPath" style="color:var(--text-muted); font-size:13px"></span>
         </div>
       </header>
@@ -51,6 +60,7 @@
           <header class="card-header">
             <div class="name">实时数据曲线</div>
             <div class="file" id="plot-meta"></div>
+            <button class="btn-icon" onclick="exportChart()" title="导出图表为 PNG">📊</button>
           </header>
           <div id="lineChart" style="width:100%; height:100%;"></div>
         </section>
@@ -169,6 +179,12 @@
     const mainGrid = document.getElementById('mainGrid');
 
     let timer = null;
+    
+    // 从 localStorage 恢复用户的刷新频率设置
+    const savedInterval = localStorage.getItem('cd_plot_interval');
+    if (savedInterval) {
+      intervalSel.value = savedInterval;
+    }
     let interval = parseInt(intervalSel.value, 10) || 100;
 
     // 使用霓虹赛博朋克主题初始化
@@ -333,10 +349,12 @@
 
     function renderAll(data){
       const meta = data.meta || {}; const s = data.series || {};
+      currentChartData = s; // 保存数据供导出使用
       const t = s.t || [];
       const map_size = s.map_size || [];
       const edges_found = s.edges_found || [];
       const corpus_count = s.corpus_count || [];
+      const saved_crashes = s.saved_crashes || [];
 
       dataPathEl.textContent = meta.path ? ('文件：' + meta.path) : '未找到 plot_data';
       metaEl.textContent = meta.exists ? (new Date(meta.mtime).toLocaleString() + ' · ' + (meta.size||0) + 'B') : '等待数据…';
@@ -351,7 +369,7 @@
         axisPointer: { link: [{ xAxisIndex: 'all' }], label: { backgroundColor: 'rgba(20,26,36,0.9)' } },
         tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
         legend: { 
-          data: ['map_size(%)','edges_found','corpus_count'], 
+          data: ['map_size(%)','edges_found','corpus_count','saved_crashes'], 
           selected: legendSelected || undefined, 
           top: null, 
           bottom: 15, 
@@ -423,6 +441,23 @@
               const pad = Math.max(1, (max - min) * 0.1);
               return max + pad;
             }
+          },
+          {
+            type: 'value', position: 'right', scale: true, offset: 104,
+            min: function(v){
+              const min = Number.isFinite(v.min) ? v.min : 0;
+              const max = Number.isFinite(v.max) ? v.max : (min+1);
+              if (min === max) return Math.max(0, min - 1);
+              const pad = Math.max(1, (max - min) * 0.1);
+              return Math.max(0, min - pad);
+            },
+            max: function(v){
+              const min = Number.isFinite(v.min) ? v.min : 0;
+              const max = Number.isFinite(v.max) ? v.max : (min+2);
+              if (min === max) return max + 1;
+              const pad = Math.max(1, (max - min) * 0.1);
+              return max + pad;
+            }
           }
         ],
         series: [
@@ -444,6 +479,11 @@
             name: 'corpus_count', type: 'line', yAxisIndex: 2, smooth: true, showSymbol: false, data: t.map((ti,i)=>[ti, corpus_count[i]]),
             lineStyle:{ color:'#ff006e', width: 3 },
             areaStyle:{ opacity: 0.25, color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(255,0,110,0.4)'},{offset:1,color:'rgba(255,0,110,0.05)'}]) }
+          },
+          {
+            name: 'saved_crashes', type: 'line', yAxisIndex: 3, smooth: true, showSymbol: false, data: t.map((ti,i)=>[ti, saved_crashes[i]]),
+            lineStyle:{ color:'#ffed4e', width: 3 },
+            areaStyle:{ opacity: 0.25, color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(255,237,78,0.4)'},{offset:1,color:'rgba(255,237,78,0.05)'}]) }
           }
         ]
       };
@@ -534,13 +574,122 @@
     function start(){ stop(); timer = setInterval(fetchPlot, interval); }
     function stop(){ if (timer) { clearInterval(timer); timer=null; } }
 
-    intervalSel.addEventListener('change', () => { interval = parseInt(intervalSel.value,10)||100; start(); });
+    intervalSel.addEventListener('change', () => {
+      interval = parseInt(intervalSel.value,10)||100;
+      localStorage.setItem('cd_plot_interval', intervalSel.value);
+      start();
+    });
     window.addEventListener('resize', () => { applyLayout(); });
 
     applyLayout();
     fetchPlot();
     start();
-    
+
+    // ========== 导出功能 ==========
+    let currentChartData = null; // 保存当前图表数据
+
+    // 导出下拉菜单控制
+    const exportBtn = document.getElementById('exportBtn');
+    const exportDropdown = document.getElementById('exportDropdown');
+    let dropdownVisible = false;
+
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdownVisible = !dropdownVisible;
+      exportDropdown.style.display = dropdownVisible ? 'block' : 'none';
+    });
+
+    document.addEventListener('click', () => {
+      dropdownVisible = false;
+      exportDropdown.style.display = 'none';
+    });
+
+    // 导出图表为 PNG
+    window.exportChart = function() {
+      const url = lineChart.getDataURL({
+        type: 'png',
+        pixelRatio: 2,
+        backgroundColor: '#0a0e1a'
+      });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chilodisco_chart_${new Date().getTime()}.png`;
+      a.click();
+      window.ChiloDisco?.toast?.success('图表导出成功！');
+      dropdownVisible = false;
+      exportDropdown.style.display = 'none';
+    };
+
+    // 导出数据为 CSV
+    window.exportData = function() {
+      if (!currentChartData) {
+        window.ChiloDisco?.toast?.warning('暂无数据可导出！');
+        return;
+      }
+
+      const series = currentChartData;
+      const len = series.t?.length || 0;
+      if (len === 0) {
+        window.ChiloDisco?.toast?.warning('暂无数据可导出！');
+        return;
+      }
+
+      // 构建 CSV 内容
+      const headers = [
+        'Time(s)',
+        'Map Size(%)',
+        'Edges Found',
+        'Corpus Count',
+        'Cycles Done',
+        'Current Item',
+        'Saved Crashes',
+        'Max Depth',
+        'Total Execs',
+        'Pending Total',
+        'Pending Favs',
+        'Execs/Sec'
+      ];
+
+      let csv = headers.join(',') + '\\n';
+
+      for (let i = 0; i < len; i++) {
+        const row = [
+          series.t[i] || 0,
+          series.map_size[i] || 0,
+          series.edges_found[i] || 0,
+          series.corpus_count[i] || 0,
+          series.cycles_done[i] || 0,
+          series.cur_item[i] || 0,
+          series.saved_crashes[i] || 0,
+          series.max_depth[i] || 0,
+          series.total_execs[i] || 0,
+          series.pending_total[i] || 0,
+          series.pending_favs[i] || 0,
+          series.execs_per_sec[i] || 0
+        ];
+        csv += row.join(',') + '\\n';
+      }
+
+      // 下载 CSV
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chilodisco_data_${new Date().getTime()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      window.ChiloDisco?.toast?.success('CSV 数据导出成功！');
+      dropdownVisible = false;
+      exportDropdown.style.display = 'none';
+    };
+
+    // 导出全部（图表+数据）
+    window.exportAll = function() {
+      exportChart();
+      setTimeout(() => exportData(), 300);
+    };
+
     // 霓虹粒子特效 - 高密度可见版
     (function() {
       const canvas = document.getElementById('globalParticles');

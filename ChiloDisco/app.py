@@ -651,6 +651,11 @@ def downloads_page():
     return render_template('downloads.html')
 
 
+@app.route('/settings')
+def settings_page():
+    return render_template('settings.html')
+
+
 @app.route('/api/download/plot_data')
 def download_plot_data():
     path = _plotdata_path()
