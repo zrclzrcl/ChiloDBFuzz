@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Bitmap 热力图 · ChiloDisco</title>
+	<link rel="stylesheet" href="/static/css/styles.css">
+	<style>
+		:root {
+			--bg: #0f172a;
+			--card: #111827;
+			--muted: #94a3b8;
+			--accent: #22d3ee;
+			--ok: #10b981;
+			--warn: #f59e0b;
+			--danger: #ef4444;
+		}
+		body { margin:0; background:var(--bg); color:#e5e7eb; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;}
+		.wrap { max-width:1200px; margin:0 auto; padding:16px; }
+		.toolbar {
+			display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+			background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.12));
+			border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 14px;
+			box-shadow: 0 8px 30px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.05);
+		}
+		.toolbar .title { font-weight:600; letter-spacing:.2px; margin-right:8px;}
+		.toolbar .seg {
+			display:inline-flex; border:1px solid rgba(255,255,255,0.08); border-radius:10px; overflow:hidden;
+			background: rgba(255,255,255,0.03);
+		}
+		.toolbar .seg button{
+			background: transparent; color:#d1d5db; border:0; padding:8px 12px; cursor:pointer;
+		}
+		.toolbar .seg button.active{ background: rgba(34,211,238,0.12); color:#22d3ee; font-weight:600;}
+		.toolbar label { color:#9ca3af; font-size:14px; }
+		select, input[type="checkbox"]{ background:#0b1220; color:#e5e7eb; border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:6px 10px; }
+		.grid-card{
+			margin-top:14px; border:1px solid rgba(255,255,255,0.08); border-radius:14px; overflow:hidden;
+			background: radial-gradient(1200px 800px at -10% -20%, rgba(34,211,238,0.06), transparent 40%),
+			            radial-gradient(900px 600px at 120% 0%, rgba(34,197,94,0.05), transparent 35%),
+			            rgba(255,255,255,0.02);
+			box-shadow: inset 0 1px rgba(255,255,255,0.05), 0 12px 40px rgba(0,0,0,0.4);
+		}
+		.grid-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.06); }
+		.meta{ color:#9ca3af; font-size:13px; display:flex; gap:14px; }
+		canvas{ display:block; width:100%; height:auto; image-rendering: pixelated; }
+		.footer{ margin-top:10px; color:#9ca3af; font-size:13px; display:flex; justify-content:space-between; }
+		.badge{ padding:2px 6px; border-radius:999px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); }
+		.btn{ background:#0b1220; color:#e5e7eb; border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:6px 10px; cursor:pointer;}
+		.btn.primary{ background:linear-gradient(180deg, rgba(34,211,238,0.18), rgba(34,211,238,0.06)); border-color: rgba(34,211,238,0.35); color:#a5f3fc; }
+	</style>
+	<script defer src="/static/js/bitmap.js"></script>
+	<script>
+		window.__CD_BITMAP_CONFIG__ = {
+			frameEndpoint: '/api/bitmap/frame',
+			downloadAll: '/api/download/bitmap/all',
+			downloadSingle: '/api/download/bitmap?type=',
+			pollMs: 1000
+		}
+	</script>
+	</head>
+<body>
+	<div class="wrap">
+		<div class="toolbar">
+			<div class="title">Bitmap 热力图</div>
+			<div class="seg" id="seg-type">
+				<button data-type="sum" class="active">Sum</button>
+				<button data-type="cumulative">Cumulative</button>
+				<button data-type="bool">Bool</button>
+			</div>
+			<label>刷新</label>
+			<select id="sel-interval">
+				<option value="500">0.5s</option>
+				<option value="1000" selected>1s</option>
+				<option value="2000">2s</option>
+				<option value="5000">5s</option>
+			</select>
+			<label>色标</label>
+			<select id="sel-colors">
+				<option value="inferno" selected>Inferno</option>
+				<option value="viridis">Viridis</option>
+				<option value="magma">Magma</option>
+				<option value="gray">Gray</option>
+			</select>
+			<label><input type="checkbox" id="chk-new" checked> 新增高亮</label>
+			<label><input type="checkbox" id="chk-diff" checked> 差异闪烁</label>
+			<label><input type="checkbox" id="chk-still" checked> 长期静默标记</label>
+			<button class="btn" id="btn-dl-sel">下载当前</button>
+			<button class="btn primary" id="btn-dl-all">下载全部</button>
+		</div>
+
+		<div class="grid-card">
+			<div class="grid-head">
+				<div>当前通道：<span id="label-type">sum</span></div>
+				<div class="meta">
+					<div>mapSize: <span id="meta-size">—</span></div>
+					<div>布局: <span id="meta-layout">—</span></div>
+					<div>更新时间: <span id="meta-mtime">—</span></div>
+				</div>
+			</div>
+			<canvas id="heatmap" width="256" height="256"></canvas>
+		</div>
+
+		<div class="footer">
+			<div>提示：仅显示一个通道；切换在上方按钮中。</div>
+			<div>
+				<span class="badge">新增 = bool:0→1</span>
+				<span class="badge">差异 = 任一通道变化</span>
+				<span class="badge">静默 = 连续多次未变化（客户端统计）</span>
+			</div>
+		</div>
+	</div>
+</body>
+</html>
+
+
+
+

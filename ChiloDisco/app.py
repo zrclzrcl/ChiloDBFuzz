@@ -3,7 +3,7 @@ import io
 import time
 import json
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 from flask import Flask, jsonify, render_template, send_from_directory, request, send_file, abort
 
@@ -643,6 +643,149 @@ def api_plot():
 def plot_page():
     # 若存在前端工程构建产物（未来可将 plot 集成 SPA），此处仍回退到服务端模板页
     return render_template('plot.html')
+
+
+# —— 位图（Bitmap）热力图页面与 API ——
+@app.route('/bitmap')
+def bitmap_page():
+    return render_template('bitmap.html')
+
+
+def _load_bitmap_dir() -> str:
+    """从 config.yaml 的 FILE_PATH 段读取 BITMAP 目录的绝对路径。
+    如果配置的是文件路径，则自动取其目录部分。"""
+    file_paths = load_file_paths()
+    p = file_paths.get('BITMAP', '')
+    if not p:
+        return ''
+    # 如果路径存在但是文件，则取其目录部分
+    if os.path.exists(p) and os.path.isfile(p):
+        p = os.path.dirname(p)
+    # 检查是否为有效目录
+    if p and os.path.exists(p) and os.path.isdir(p):
+        return p
+    return ''
+
+
+def _read_int_csv(path: str) -> List[int]:
+    """读取逗号分隔整型文本，返回 list[int]。读取失败返回空列表。"""
+    try:
+        if not path or not os.path.exists(path):
+            return []
+        with open(path, 'r', encoding='utf-8') as f:
+            s = f.read().strip()
+        if not s:
+            return []
+        line = s.splitlines()[0]
+        parts = [p.strip() for p in line.split(',') if p.strip() != '']
+        out = []
+        for x in parts:
+            try:
+                out.append(int(float(x)))
+            except Exception:
+                out.append(0)
+        return out
+    except Exception:
+        return []
+
+
+def _best_grid(n: int) -> Tuple[int, int]:
+    """为长度 n 的一维数组选择接近正方形的网格 (rows, cols)。"""
+    if n <= 0:
+        return (0, 0)
+    import math
+    r = max(1, int(math.sqrt(n)))
+    best = (r, (n + r - 1) // r)
+    best_score = abs(best[0] - best[1]) * 1_000_000 + (best[0] * best[1] - n)
+    # 在 sqrt 附近小范围搜索更优整数解
+    for rows in range(max(1, r - 512), r + 513):
+        cols = (n + rows - 1) // rows
+        if rows * cols < n:
+            cols += 1
+        score = abs(rows - cols) * 1_000_000 + (rows * cols - n)
+        if score < best_score:
+            best = (rows, cols)
+            best_score = score
+    return best
+
+
+@app.route('/api/bitmap/frame')
+def api_bitmap_frame():
+    """返回一次性的全量位图帧，包含 sum/cumulative/bool 三通道及其文件 mtime。"""
+    base = _load_bitmap_dir()
+    if not base:
+        return jsonify({'ok': False, 'error': 'bitmap 目录未配置或不存在'}), 404
+    sum_path = os.path.join(base, 'sum.txt')
+    cum_path = os.path.join(base, 'cumulative.txt')
+    bool_path = os.path.join(base, 'bool.txt')
+
+    sum_arr = _read_int_csv(sum_path)
+    cum_arr = _read_int_csv(cum_path)
+    bool_arr = _read_int_csv(bool_path)
+
+    map_size = max(len(sum_arr), len(cum_arr), len(bool_arr))
+    rows, cols = _best_grid(map_size)
+
+    payload = {
+        'ok': True,
+        'ts': datetime.now(tz=timezone.utc).isoformat(),
+        'mapSize': map_size,
+        'layout': {'rows': rows, 'cols': cols},
+        'files': {
+            'sum': {'path': sum_path, 'mtime': _file_mtime_iso(sum_path), 'exists': os.path.exists(sum_path)},
+            'cumulative': {'path': cum_path, 'mtime': _file_mtime_iso(cum_path), 'exists': os.path.exists(cum_path)},
+            'bool': {'path': bool_path, 'mtime': _file_mtime_iso(bool_path), 'exists': os.path.exists(bool_path)},
+        },
+        'channels': {
+            'sum': sum_arr,
+            'cumulative': cum_arr,
+            'bool': bool_arr,
+        }
+    }
+    resp = jsonify(payload)
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
+
+
+@app.route('/api/download/bitmap')
+def download_bitmap_single():
+    """下载单个 bitmap 文件（sum|cumulative|bool）。"""
+    which = (request.args.get('type') or '').strip().lower()
+    if which not in ('sum', 'cumulative', 'bool'):
+        return abort(400, description='type 应为 sum|cumulative|bool')
+    base = _load_bitmap_dir()
+    if not base:
+        return abort(404, description='bitmap 目录不存在')
+    path = os.path.join(base, f'{which}.txt')
+    if not os.path.exists(path):
+        return abort(404, description=f'{which}.txt 不存在')
+    return send_file(path, as_attachment=True, download_name=f'{which}.txt')
+
+
+@app.route('/api/download/bitmap/all')
+def download_bitmap_all():
+    """打包下载三种 bitmap 文本为 zip。"""
+    import zipfile
+    base = _load_bitmap_dir()
+    if not base:
+        return abort(404, description='bitmap 目录不存在')
+    files = [('sum.txt', 'sum.txt'), ('cumulative.txt', 'cumulative.txt'), ('bool.txt', 'bool.txt')]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for fname, arc in files:
+            p = os.path.join(base, fname)
+            if os.path.exists(p):
+                try:
+                    zf.write(p, arcname=arc)
+                except Exception:
+                    zf.writestr(arc, '')
+            else:
+                zf.writestr(arc, '')
+    buf.seek(0)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return send_file(buf, as_attachment=True, download_name=f'bitmap_{ts}.zip')
 
 
 # ————— 下载页面与下载 API —————
