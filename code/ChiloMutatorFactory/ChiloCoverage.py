@@ -61,7 +61,8 @@ class AFLCoverageReader:
     def _attach_shm(self):
         """Attach to AFL++ shared memory segment"""
         # Get shared memory identifier from environment variable
-        shm_id_str = os.environ.get(SHM_ENV_VAR)
+        SHM_ENV_VAR_VALUE = input("请输入AFL++中SHM_ENV_VAR的值:")
+        shm_id_str = SHM_ENV_VAR_VALUE
         if not shm_id_str:
             raise RuntimeError(
                 f"Environment variable {SHM_ENV_VAR} not set. "
