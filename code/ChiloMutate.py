@@ -99,7 +99,7 @@ def fuzz_count(buf):
         internal = list(q.queue)  # 拷贝当前快照
     if not internal:
         #到这里判断，变异器池是否为空，如果为空，说明是模糊测试刚启动的状态，则默认先用待执行队列，让fuzz mutate_once去等待待执行队列去
-        if chilo_factory.mutator_pool.mutator_list.len() > 0:
+        if len(chilo_factory.mutator_pool.mutator_list) > 0:
             #说明并非刚启动，变异器池已经有东西了
             chilo_factory.next_fuzz_strategy = 2
             return mutate_time
