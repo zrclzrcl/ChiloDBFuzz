@@ -184,14 +184,20 @@ def post_run():
     """
     global chilo_factory
     global last_bitmap_save
-    #读取刚刚的fuzz的测试用例的边覆盖位图情况
-    now_bitmap = chilo_factory.coverage_reader.get_coverage_bitmap()    #当前的bitmap
-    new_edges = chilo_factory.bitmap.add_bitmap(now_bitmap)
-    chilo_factory.main_logger.info(f"新增边数量：{new_edges}")
+    global fuzz_count_number
 
-    if time.time() - last_bitmap_save > 5:
-        chilo_factory.write_bitmap()
-        last_bitmap_save = time.time()
+    if fuzz_count_number == 0:
+        #dry run阶段，跳过postrun
+        pass
+    else:
+        #读取刚刚的fuzz的测试用例的边覆盖位图情况
+        now_bitmap = chilo_factory.coverage_reader.get_coverage_bitmap()    #当前的bitmap
+        new_edges = chilo_factory.bitmap.add_bitmap(now_bitmap)
+        chilo_factory.main_logger.info(f"新增边数量：{new_edges}")
+
+        if time.time() - last_bitmap_save > 5:
+            chilo_factory.write_bitmap()
+            last_bitmap_save = time.time()
     
 
 #当AFL++停止或结束的时候调用该函数，进行清理
