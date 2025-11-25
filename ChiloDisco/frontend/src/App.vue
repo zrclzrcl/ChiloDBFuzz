@@ -8,6 +8,7 @@
       <nav class="nav-links">
         <a class="active" href="/">日志监控</a>
         <a href="/plot">数据大屏</a>
+        <a href="/bitmap">Bitmap 热力图</a>
         <a href="/downloads">结果下载</a>
         <a href="/settings" @click.prevent="goSettings">系统设置</a>
       </nav>
