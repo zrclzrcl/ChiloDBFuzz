@@ -714,7 +714,24 @@ def api_bitmap_frame():
     """返回一次性的全量位图帧，包含 sum/cumulative/bool 三通道及其文件 mtime。"""
     base = _load_bitmap_dir()
     if not base:
-        return jsonify({'ok': False, 'error': 'bitmap 目录未配置或不存在'}), 404
+        # 返回200状态码，但标记为错误，避免前端页面跳转
+        return jsonify({
+            'ok': False,
+            'error': 'bitmap 目录未配置或不存在',
+            'ts': datetime.now(tz=timezone.utc).isoformat(),
+            'mapSize': 0,
+            'layout': {'rows': 0, 'cols': 0},
+            'files': {
+                'sum': {'path': '', 'mtime': '', 'exists': False},
+                'cumulative': {'path': '', 'mtime': '', 'exists': False},
+                'bool': {'path': '', 'mtime': '', 'exists': False},
+            },
+            'channels': {
+                'sum': [],
+                'cumulative': [],
+                'bool': [],
+            }
+        }), 200
     sum_path = os.path.join(base, 'sum.txt')
     cum_path = os.path.join(base, 'cumulative.txt')
     bool_path = os.path.join(base, 'bool.txt')

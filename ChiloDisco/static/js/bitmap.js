@@ -4,36 +4,46 @@
   const DL_ALL = cfg.downloadAll || '/api/download/bitmap/all';
   const DL_ONE = cfg.downloadSingle || '/api/download/bitmap?type=';
 
-  const c = document.getElementById('heatmap');
-  const ctx = c.getContext('2d', { alpha: false });
-  const seg = document.getElementById('seg-type');
-  const labelType = document.getElementById('label-type');
-  const metaSize = document.getElementById('meta-size');
-  const metaLayout = document.getElementById('meta-layout');
-  const metaMtime = document.getElementById('meta-mtime');
+  // 获取单个 canvas 和容器
+  const card = document.querySelector('.grid-card[data-type]');
+  if (!card) {
+    console.warn('bitmap.js: no grid card found');
+    return;
+  }
+
+  const canvas = card.querySelector('.heatmap-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const labelType = card.querySelector('.label-type');
+
+  const segType = document.getElementById('seg-type');
   const selInterval = document.getElementById('sel-interval');
   const selColors = document.getElementById('sel-colors');
   const chkNew = document.getElementById('chk-new');
   const chkDiff = document.getElementById('chk-diff');
   const chkStill = document.getElementById('chk-still');
-  const btnDlAll = document.getElementById('btn-dl-all');
   const btnDlSel = document.getElementById('btn-dl-sel');
+  const btnDlAll = document.getElementById('btn-dl-all');
+  
+  if (!segType || !selInterval || !selColors || !chkNew || !chkDiff || !chkStill || !btnDlSel || !btnDlAll) {
+    console.warn('bitmap.js: required DOM elements not found');
+    return;
+  }
 
-  let activeType = 'sum'; // 'sum' | 'cumulative' | 'bool'
+  let currentType = 'sum';
   let pollMs = parseInt(selInterval.value, 10) || 1000;
   let timer = null;
 
-  // 本地状态（TypedArray 或普通数组）
+  // 状态
   let mapSize = 0;
   let layout = { rows: 0, cols: 0 };
   let last = { sum: [], cumulative: [], bool: [] };
-  let stillCounter = [];  // 连续未变化计数
-  const STILL_THRESHOLD = 60; // 连续60轮未变化视为“长期静默”
+  let stillCounter = [];
 
-  // 动画叠加项：记录一个 index -> untilTs 的寿命
-  const glowNew = new Map();   // bool 0->1
-  const glowDiff = new Map();  // 任意通道变化
+  // 动画叠加项
+  const glowNew = new Map();
+  const glowDiff = new Map();
   const GLOW_MS = 1200;
+  const STILL_THRESHOLD = 60;
 
   // 调色盘
   const palettes = {
@@ -43,20 +53,21 @@
     gray: grayPalette(),
   };
 
-  function setActiveType(t) {
-    activeType = t;
-    labelType.textContent = t;
-    Array.from(seg.querySelectorAll('button')).forEach(b => {
-      b.classList.toggle('active', b.dataset.type === t);
+  // 类型切换
+  segType.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      if (type === currentType) return;
+      currentType = type;
+      segType.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      card.dataset.type = type;
+      if (labelType) {
+        labelType.textContent = type === 'sum' ? 'Sum' : type === 'cumulative' ? 'Cumulative' : 'Bool';
+      }
+      resizeCanvas();
+      drawCanvas();
     });
-    draw();
-  }
-
-  seg.addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    const t = b.dataset.type;
-    if (t) setActiveType(t);
   });
 
   selInterval.addEventListener('change', () => {
@@ -64,104 +75,168 @@
     start();
   });
 
-  selColors.addEventListener('change', draw);
-  chkNew.addEventListener('change', draw);
-  chkDiff.addEventListener('change', draw);
-  chkStill.addEventListener('change', draw);
-  btnDlAll.addEventListener('click', () => { window.location.href = DL_ALL; });
-  btnDlSel.addEventListener('click', () => { window.location.href = DL_ONE + activeType; });
+  selColors.addEventListener('change', () => drawCanvas());
+  chkNew.addEventListener('change', () => drawCanvas());
+  chkDiff.addEventListener('change', () => drawCanvas());
+  chkStill.addEventListener('change', () => drawCanvas());
+  
+  btnDlSel.addEventListener('click', () => {
+    window.location.href = DL_ONE + currentType;
+  });
+  btnDlAll.addEventListener('click', () => {
+    window.location.href = DL_ALL;
+  });
 
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
+  // Resize 监听
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => resizeCanvas(), 100);
+  });
 
   function resizeCanvas() {
-    // 保持像素基准绘制：根据容器宽度设置画布尺寸（高度按行列比）
-    const wrapWidth = c.parentElement.clientWidth - 2;
+    const container = card;
+    const containerRect = container.getBoundingClientRect();
+    const headHeight = container.querySelector('.grid-head')?.offsetHeight || 0;
+    
+    // 获取可用空间（减去头部和 padding）
+    const availableWidth = containerRect.width - 2; // 减去边框
+    const availableHeight = containerRect.height - headHeight - 2;
+    
+    if (availableWidth <= 0 || availableHeight <= 0) {
+      canvas.width = 512;
+      canvas.height = 512;
+      return;
+    }
+
+    // 根据布局比例计算最佳尺寸
     const ratio = (layout.rows && layout.cols) ? (layout.rows / layout.cols) : 1.0;
-    const targetW = Math.max(256, Math.min(1024, wrapWidth));
-    const targetH = Math.max(256, Math.round(targetW * ratio));
-    c.width = targetW;
-    c.height = targetH;
-    draw();
+    
+    let targetW = availableWidth;
+    let targetH = Math.round(targetW * ratio);
+    
+    // 如果高度超出，按高度调整
+    if (targetH > availableHeight) {
+      targetH = availableHeight;
+      targetW = Math.round(targetH / ratio);
+    }
+    
+    // 确保最小尺寸
+    targetW = Math.max(256, targetW);
+    targetH = Math.max(256, targetH);
+    
+    canvas.width = targetW;
+    canvas.height = targetH;
+    drawCanvas();
   }
 
   async function fetchFrame() {
     try {
       const r = await fetch(FRAME_URL + '?t=' + Date.now(), { cache: 'no-store' });
-      if (!r.ok) return;
-      const data = await r.json();
-      if (!data || !data.ok) return;
-
-    mapSize = data.mapSize || 0;
-    layout = data.layout || { rows: 0, cols: 0 };
-    metaSize.textContent = mapSize;
-    metaLayout.textContent = `${layout.rows} x ${layout.cols}`;
-    // 以当前通道 mtime 为主展示（能基本反映新鲜度）
-    const mt = ((data.files || {})[activeType] || {}).mtime || '';
-    metaMtime.textContent = mt ? new Date(mt).toLocaleString() : '—';
-
-    // 对齐数组长度
-    const sum = (data.channels && Array.isArray(data.channels.sum)) ? data.channels.sum : [];
-    const cumulative = (data.channels && Array.isArray(data.channels.cumulative)) ? data.channels.cumulative : [];
-    const bool = (data.channels && Array.isArray(data.channels.bool)) ? data.channels.bool : [];
-    const n = Math.max(sum.length, cumulative.length, bool.length);
-
-    if (stillCounter.length !== n) {
-      stillCounter = new Array(n).fill(0);
-    }
-
-    // 变化检测
-    const now = performance.now();
-    for (let i = 0; i < n; i++) {
-      const s0 = last.sum[i] | 0; const s1 = sum[i] | 0;
-      const c0 = last.cumulative[i] | 0; const c1 = cumulative[i] | 0;
-      const b0 = last.bool[i] | 0; const b1 = bool[i] | 0;
-
-      const changed = (s0 !== s1) || (c0 !== c1) || (b0 !== b1);
-      if (changed) {
-        stillCounter[i] = 0;
-        if (chkDiff.checked) glowDiff.set(i, now + GLOW_MS);
-        if (chkNew.checked && b0 === 0 && b1 > 0) glowNew.set(i, now + GLOW_MS);
-      } else {
-        stillCounter[i] = Math.min(1e9, (stillCounter[i] | 0) + 1);
+      if (!r.ok) {
+        mapSize = 0;
+        layout = { rows: 0, cols: 0 };
+        updateMeta();
+        drawCanvas();
+        return;
       }
-    }
+      let data;
+      try {
+        data = await r.json();
+      } catch (e) {
+        console.debug('bitmap fetch: invalid JSON response', e);
+        mapSize = 0;
+        layout = { rows: 0, cols: 0 };
+        drawCanvas();
+        return;
+      }
+      if (!data || !data.ok) {
+        mapSize = data?.mapSize || 0;
+        layout = data?.layout || { rows: 0, cols: 0 };
+        updateMeta();
+        drawCanvas();
+        return;
+      }
 
-    last.sum = sum;
-    last.cumulative = cumulative;
-    last.bool = bool;
+      mapSize = data.mapSize || 0;
+      layout = data.layout || { rows: 0, cols: 0 };
+      updateMeta();
 
-    draw();
+      const sum = (data.channels && Array.isArray(data.channels.sum)) ? data.channels.sum : [];
+      const cumulative = (data.channels && Array.isArray(data.channels.cumulative)) ? data.channels.cumulative : [];
+      const bool = (data.channels && Array.isArray(data.channels.bool)) ? data.channels.bool : [];
+      const n = Math.max(sum.length, cumulative.length, bool.length);
+
+      if (stillCounter.length !== n) {
+        stillCounter = new Array(n).fill(0);
+      }
+
+      // 变化检测
+      const now = performance.now();
+      for (let i = 0; i < n; i++) {
+        const s0 = last.sum[i] | 0; const s1 = sum[i] | 0;
+        const c0 = last.cumulative[i] | 0; const c1 = cumulative[i] | 0;
+        const b0 = last.bool[i] | 0; const b1 = bool[i] | 0;
+
+        const changed = (s0 !== s1) || (c0 !== c1) || (b0 !== b1);
+        if (changed) {
+          stillCounter[i] = 0;
+          if (chkDiff.checked) glowDiff.set(i, now + GLOW_MS);
+          if (chkNew.checked && b0 === 0 && b1 > 0) glowNew.set(i, now + GLOW_MS);
+        } else {
+          stillCounter[i] = Math.min(1e9, (stillCounter[i] | 0) + 1);
+        }
+      }
+
+      last.sum = sum;
+      last.cumulative = cumulative;
+      last.bool = bool;
+
+      // 如果布局变化，重新调整 canvas 大小
+      resizeCanvas();
+      drawCanvas();
     } catch (err) {
-      // 静默处理错误，继续轮询
       console.debug('bitmap fetch error:', err);
     }
   }
 
+  function updateMeta() {
+    const metaSize = card.querySelector('.meta-size');
+    const metaLayout = card.querySelector('.meta-layout');
+    if (metaSize) metaSize.textContent = mapSize || '—';
+    if (metaLayout) {
+      const l = layout.rows && layout.cols ? `${layout.rows} x ${layout.cols}` : '—';
+      metaLayout.textContent = l;
+    }
+  }
+
   function paletteSample(pal, t) {
-    // pal: Uint8ClampedArray of [r,g,b,...] length = 256*3
     const x = Math.max(0, Math.min(255, Math.round(t * 255)));
     return [pal[x*3], pal[x*3+1], pal[x*3+2]];
   }
 
-  function draw() {
-    if (!mapSize || !layout.rows || !layout.cols) return;
-    const pal = palettes[selColors.value] || palettes.inferno;
-
-    // 底图渲染
-    const w = c.width, h = c.height;
+  function drawCanvas() {
+    const w = canvas.width, h = canvas.height;
+    
     ctx.fillStyle = '#0b1220';
     ctx.fillRect(0, 0, w, h);
-
-    // 找到当前通道与映射
-    const arr = last[activeType] || [];
+    
+    if (!mapSize || !layout.rows || !layout.cols) {
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '14px ui-sans-serif, system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('暂无数据', w / 2, h / 2);
+      return;
+    }
+    
+    const pal = palettes[selColors.value] || palettes.inferno;
+    const arr = last[currentType] || [];
     const n = arr.length;
     if (n === 0) return;
 
-    // 统计最大值用于归一化（sum/cumulative）。bool 用 0/1
     let vmax = 1;
-    if (activeType !== 'bool') {
-      // 使用稳健分位抑制极端值
+    if (currentType !== 'bool') {
       const sorted = arr.slice().sort((a,b)=>a-b);
       const hi = sorted[Math.max(0, Math.min(n-1, Math.floor(n * 0.995)))];
       vmax = Math.max(1, hi | 0);
@@ -172,27 +247,23 @@
     const cellW = w / layout.cols;
     const cellH = h / layout.rows;
 
-    // 预计算 glow 衰减并清理过期
     const now = performance.now();
     for (const [k, until] of glowNew) if (until < now) glowNew.delete(k);
     for (const [k, until] of glowDiff) if (until < now) glowDiff.delete(k);
 
-    // 绘制网格（批量填充）
     ctx.save();
-    ctx.translate(0.5, 0.5); // 轻微对齐像素
+    ctx.translate(0.5, 0.5);
     for (let r = 0, idx = 0; r < layout.rows; r++) {
       for (let ccol = 0; ccol < layout.cols; ccol++, idx++) {
         if (idx >= n) break;
         const v = arr[idx] | 0;
         let t = 0;
-        if (activeType === 'bool') {
+        if (currentType === 'bool') {
           t = v > 0 ? 1 : 0;
         } else {
-          // 对数压缩
           t = v > 0 ? (Math.log(1 + v) / Math.log(1 + vmax)) : 0;
         }
         const [r8, g8, b8] = paletteSample(pal, t);
-        // 长期静默去饱和处理（叠加一层暗化）
         let alpha = 1.0;
         if (chkStill.checked && stillCounter[idx] >= STILL_THRESHOLD) {
           alpha = 0.55;
@@ -203,29 +274,28 @@
     }
     ctx.restore();
 
-    // 叠加层：新增与差异的“发光”
+    // 叠加层：新增与差异的"发光"
     if (chkNew.checked || chkDiff.checked) {
       ctx.save();
-      // 使用叠加模式更显著
       ctx.globalCompositeOperation = 'lighter';
       const drawGlowFor = (map, color) => {
         ctx.fillStyle = color;
         for (const [idx, until] of map) {
-          const life = Math.max(0, until - now) / GLOW_MS; // 0..1
+          const life = Math.max(0, until - now) / GLOW_MS;
           if (life <= 0) continue;
           const r = Math.floor(idx / layout.cols);
           const ccol = idx % layout.cols;
           const x = Math.floor(ccol * cellW);
           const y = Math.floor(r * cellH);
-          const expand = 0.15 + 0.85 * life; // 发光扩散
+          const expand = 0.15 + 0.85 * life;
           const w2 = Math.ceil(cellW * expand);
           const h2 = Math.ceil(cellH * expand);
           ctx.globalAlpha = 0.25 + 0.55 * life;
           ctx.fillRect(x - Math.floor((w2-cellW)/2), y - Math.floor((h2-cellH)/2), w2, h2);
         }
       };
-      if (chkNew.checked) drawGlowFor(glowNew, 'rgba(16,185,129,0.8)'); // 绿色
-      if (chkDiff.checked) drawGlowFor(glowDiff, 'rgba(59,130,246,0.8)'); // 蓝色
+      if (chkNew.checked) drawGlowFor(glowNew, 'rgba(16,185,129,0.8)');
+      if (chkDiff.checked) drawGlowFor(glowDiff, 'rgba(59,130,246,0.8)');
       ctx.restore();
       ctx.globalAlpha = 1;
     }
@@ -264,7 +334,6 @@
     [255, 0xffffff]
   ]);}
   function makeGradient(stops){
-    // stops: [idx, 0xRRGGBB]
     const out = new Uint8ClampedArray(256*3);
     const pts = stops.slice().sort((a,b)=>a[0]-b[0]);
     for(let i=0;i<pts.length-1;i++){
@@ -281,11 +350,9 @@
         out[x*3]=r; out[x*3+1]=g; out[x*3+2]=b;
       }
     }
-    // 左侧填充
     for(let x=0;x<pts[0][0];x++){
       const c=pts[0][1]; out[x*3]=(c>>16)&255; out[x*3+1]=(c>>8)&255; out[x*3+2]=c&255;
     }
-    // 右侧填充
     for(let x=pts[pts.length-1][0]+1;x<256;x++){
       const c=pts[pts.length-1][1]; out[x*3]=(c>>16)&255; out[x*3+1]=(c>>8)&255; out[x*3+2]=c&255;
     }
@@ -299,8 +366,4 @@
   }).catch(()=>{
     start();
   });
-})(); 
-
-
-
-
+})();
