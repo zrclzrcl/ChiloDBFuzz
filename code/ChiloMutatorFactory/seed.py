@@ -18,6 +18,7 @@ class AFLSeed:
         self.is_parsed = False      # 表明该种子是否已经被解析了
         self.parser_content = None  # 该种子的解析结果
         self.next_mutator_id = 0
+        self.mask_count = 0     # 该种子解析后的掩码数量 (用于 Ci 计算)
 
 
 class AFLSeedList:

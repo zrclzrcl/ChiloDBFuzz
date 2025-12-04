@@ -325,6 +325,12 @@ def chilo_parser(chilo_factory: ChiloFactory):
                 f"seed_id:{seed_id} 解析结果存入文件成功")
             chilo_factory.all_seed_list.seed_list[seed_id].parser_content = parse_msg
             chilo_factory.all_seed_list.seed_list[seed_id].is_parsed = True
+            
+            # 计算掩码数量 (Ci 因子)
+            mask_count = parse_msg.count('[')
+            chilo_factory.all_seed_list.seed_list[seed_id].mask_count = mask_count
+            chilo_factory.parser_logger.info(f"seed_id:{seed_id} 掩码数量统计: {mask_count}")
+            
             # 然后要将这个加入到待变异中
             chilo_factory.parser_logger.info(
                 f"seed_id:{seed_id} 准备加入到变异器待生成队列中")
@@ -341,4 +347,4 @@ def chilo_parser(chilo_factory: ChiloFactory):
                                        tmp_seed_is_fuzz_flag_for_csv, llm_usd_time_all, up_token_all, down_token_all,
                                        llm_use_count, llm_format_error_count, all_end_time-all_start_time,
                                        chilo_factory.all_seed_list.seed_list[seed_id].chose_time,
-                                       left_parser_queue_size, evicted_seed_total)
+                                       left_parser_queue_size, evicted_seed_total, mask_count)

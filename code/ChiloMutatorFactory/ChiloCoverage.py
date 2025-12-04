@@ -23,10 +23,11 @@ MAP_SIZE = int(os.environ.get("AFL_MAP_SIZE"))
 class AFLCoverageReader:
     """Reads AFL++ coverage bitmap from shared memory"""
     
-    def __init__(self):
+    def __init__(self, shm_id_path):
         self.shm_id = None
         self.map_ptr = None
         self.map_size = MAP_SIZE
+        self.shm_id_path = shm_id_path
         self._libc = None
         self._attached = False
         self._init_libc()
@@ -60,8 +61,10 @@ class AFLCoverageReader:
     
     def _attach_shm(self):
         """Attach to AFL++ shared memory segment"""
-        # Get shared memory identifier from environment variable
-        SHM_ENV_VAR_VALUE = input("请输入AFL++中SHM_ENV_VAR的值:")
+        # Get shared memory identifier from file
+        with open(self.shm_id_path, "r", encoding="utf-8") as f:
+            content = f.read()      # 读取全部内容
+            SHM_ENV_VAR_VALUE = content.split("\n")[0]
         shm_id_str = SHM_ENV_VAR_VALUE
         if not shm_id_str:
             raise RuntimeError(

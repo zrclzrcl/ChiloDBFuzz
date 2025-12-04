@@ -2,6 +2,7 @@ import importlib.util
 import os
 import time
 import traceback
+import contextlib
 from typing import List
 
 from . import chilo_factory
@@ -94,7 +95,10 @@ def call_mutate_from_file(filepath):
     spec.loader.exec_module(module)  # 执行文件内容，加载为模块对象
 
     if hasattr(module, "mutate"):
-        return module.mutate()  # 调用 mutate 函数并返回结果
+        # 使用 contextlib 屏蔽 stdout 和 stderr，防止变异器中的 print 干扰 AFL++ 界面
+        with open(os.devnull, "w") as fnull:
+            with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
+                return module.mutate()  # 调用 mutate 函数并返回结果
     else:
         raise AttributeError(f"错误码：1203 该变异器中未找到 mutate() 函数")
 
@@ -140,7 +144,8 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
         fix_seed_id = need_fix["seed_id"]
         fix_mutate_time = need_fix["mutate_time"]
         fix_mutator_code = need_fix["mutator_code"]
-        my_chilo_factory.mutator_fixer_logger.info(f"[线程{thread_id}]接收到变异器修复任务，seed_id：{fix_seed_id}，变异次数：{fix_mutate_time}")
+        calculated_similarity = 0.0  # 初始化重复率,在语义检测时会更新
+        my_chilo_factory.mutator_fixer_logger.info(f"[线程{thread_id}]接收到变异器修复任务,seed_id:{fix_seed_id},变异次数:{fix_mutate_time}")
         while True: #用于检测修复的循环
             # 先保存到临时文件（使用线程独立的临时文件）
             my_chilo_factory.mutator_fixer_logger.info(
@@ -183,6 +188,14 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                     fix_reason.append("The generated return values lack sufficient randomness, with more than 25% of the results being identical.")
                 else:
                     is_semantics_correct[1] = True
+
+                # 计算重复率 (similarity) 用于 Ci 因子
+                # similarity = 1 - (unique_count / total_count)
+                unique_count = len(set(mutate_result))
+                total_count = len(mutate_result)
+                calculated_similarity = 1.0 - (unique_count / total_count) if total_count > 0 else 0.0
+                my_chilo_factory.mutator_fixer_logger.info(
+                    f"seed_id:{fix_seed_id}，重复率计算: unique={unique_count}/{total_count}, similarity={calculated_similarity:.4f}")
 
                 my_chilo_factory.mutator_fixer_logger.info(
                     f"seed_id：{fix_seed_id}，语义检测结果为：{is_semantics_correct}")
@@ -248,7 +261,8 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                                                       sematic_fix_use_time_all, sematic_mask_error_count, sematic_random_error_count,
                                                       semantic_error_count, semantic_error_llm_use_time, semantic_error_llm_count,
                                                       semantic_llm_format_error, semantic_up_token_all, semantic_down_token_all, 
-                                                      my_chilo_factory.fix_mutator_list.qsize(), False)
+                                                      my_chilo_factory.fix_mutator_list.qsize(), False,
+                                                      my_chilo_factory.all_seed_list.seed_list[fix_seed_id].mask_count, calculated_similarity, 0, 0)
                     break  # 跳出内层循环，外层循环会处理下一个变异器
                 
                 my_chilo_factory.mutator_fixer_logger.info(
@@ -314,9 +328,11 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
         my_chilo_factory.mutator_fixer_logger.info(
             f"[线程{thread_id}]seed_id：{fix_seed_id}，mutator_id：{now_mutator_id} 已保存到文件")
 
-        # 构建一个变异器（使用锁保护mutator_pool操作）
+        # 构建一个变异器(使用锁保护mutator_pool操作)
         with my_chilo_factory.mutator_pool_lock:
-            mutator_index = my_chilo_factory.mutator_pool.add_mutator(fix_seed_id, now_mutator_id)
+            # 获取掩码数量和重复率 (Ci 因子)
+            mask_count = my_chilo_factory.all_seed_list.seed_list[fix_seed_id].mask_count
+            mutator_index = my_chilo_factory.mutator_pool.add_mutator(fix_seed_id, now_mutator_id, mask_count, calculated_similarity)
         
         mutator_add_in_exec = my_chilo_factory.mutator_pool.mutator_list[mutator_index]
         my_chilo_factory.mutator_fixer_logger.info(
@@ -336,4 +352,5 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                                           syntax_llm_count, syntax_fix_up_token_all, syntax_fix_down_token_all,
                                           sematic_fix_use_time_all, sematic_mask_error_count, sematic_random_error_count,
                                           semantic_error_count, semantic_error_llm_use_time, semantic_error_llm_count,
-                                          semantic_llm_format_error, semantic_up_token_all, semantic_down_token_all, left_fix_queue_size, at_last_is_all_correct)
+                                          semantic_llm_format_error, semantic_up_token_all, semantic_down_token_all, left_fix_queue_size,
+                                          at_last_is_all_correct,mask_count, calculated_similarity, unique_count, total_count)

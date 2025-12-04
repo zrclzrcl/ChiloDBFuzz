@@ -9,6 +9,7 @@ import queue
 import os
 import time
 import threading
+import contextlib
 
 import yaml
 from . import ChiloBitMap
@@ -31,6 +32,12 @@ class ChiloFactory:
         self.config_file_path = config_file_path
 
         self.next_fuzz_strategy = 0 #在fuzzcount确定策略，在fuzz选择指定的策略执行，0就是结构化，1就是待执行变异器，2就是变异器池
+        self.current_thompson_mutator = None # 当前汤普森采样选中的变异器
+        self.current_thompson_score = 0.0    # 当前选中变异器的得分
+        self.current_Ai = 0.0                # 当前选中变异器的Ai
+        self.current_Bi = 0.0                # 当前选中变异器的Bi
+        self.current_Ci = 0.0                # 当前选中变异器的Ci
+        self.current_batch_new_edges = 0     # 当前汤普森采样批次的新边计数
 
         with open(self.config_file_path, "r", encoding="utf-8") as f:   #读配置文件
             config = yaml.safe_load(f)
@@ -75,6 +82,7 @@ class ChiloFactory:
         self.structural_mutator_path = config['FILE_PATH']['STRUCTURAL_MUTATE_PATH']   #结构化变异的文件路径
         self.mutator_fix_tmp_path = config['FILE_PATH']['MUTATOR_FIX_TMP_PATH']
         self.bitmap_path = config['FILE_PATH']['BITMAP']
+        self.shm_id_path = config['FILE_PATH']['SHMID']
 
         self.mutator_pool = ChiloMutator.ChiloMutatorPool(self.generated_mutator_path)  #一个变异器池
         self.all_seed_list = seed.AFLSeedList() #收到的所有seed的列表
@@ -95,6 +103,9 @@ class ChiloFactory:
         # 错误重试配置
         self.llm_format_error_max_retry = config['OTHERS'].get('LLM_FORMAT_ERROR_MAX_RETRY', 5)
         self.syntax_error_max_retry = config['OTHERS'].get('SYNTAX_ERROR_MAX_RETRY', 5)
+        self.max_energy = config['OTHERS']['MAX_ENERGY']    #变异器最大能量
+        self.min_energy = config['OTHERS']['MIN_ENERGY']    #变异器最小能量
+        self.energy_exchange_rate = config['OTHERS']['ENERGY_EXCHANGE_RATE']    #能量兑换率
 
         #下面是CSV文件
         self.mutator_fixer_csv_path = config['CSV']['MUTATOR_FIXER_CSV_PATH']
@@ -143,7 +154,7 @@ class ChiloFactory:
         )
 
         # 初始化 AFL++ 覆盖率读取器
-        self.coverage_reader = ChiloCoverage.AFLCoverageReader()
+        self.coverage_reader = ChiloCoverage.AFLCoverageReader(self.shm_id_path)
 
         self.bitmap = ChiloBitMap.BitMap(self.coverage_reader.map_size) #总mapsize图
 
@@ -160,7 +171,7 @@ class ChiloFactory:
             # 路径存在，检查是否为空
             if os.path.isdir(self.parsed_sql_path) and os.listdir(self.parsed_sql_path):
                 # 目录不为空，终止程序
-                exit(1)
+                raise Exception(f"目标输出目录不为空：{self.generated_mutator_path}")
 
         # 检查并处理 generated_mutator_path
         if not os.path.exists(self.generated_mutator_path):
@@ -170,7 +181,7 @@ class ChiloFactory:
             # 路径存在，检查是否为空
             if os.path.isdir(self.generated_mutator_path) and os.listdir(self.generated_mutator_path):
                 # 目录不为空，终止程序
-                exit(1)
+                raise Exception(f"目标输出目录不为空：{self.generated_mutator_path}")
 
         if not os.path.exists(self.structural_mutator_path):
             # 路径不存在，创建文件夹
@@ -179,7 +190,7 @@ class ChiloFactory:
             # 路径存在，检查是否为空
             if os.path.isdir(self.structural_mutator_path) and os.listdir(self.structural_mutator_path):
                 # 目录不为空，终止程序
-                exit(1)
+                raise Exception(f"目标输出目录不为空：{self.structural_mutator_path}")
 
         llm_log_dir =  os.path.dirname(self.llm_log_path)
         main_log_dir =  os.path.dirname(self.main_log_path)
@@ -213,7 +224,8 @@ class ChiloFactory:
             writer.writerow(["real_time", "relative_time", "seed_id",
                              "need_mutate_count", "is_parsed", "LLM_use_time",
                              "up_token", "down_token", "LLM_count", "LLM_format_error_count",
-                             "all_use_time", "select_count","left_parser_queue_count", "evicted_seed_total"])
+                             "all_use_time", "select_count","left_parser_queue_count", "evicted_seed_total",
+                             "mask_count"])
         with open(self.mutator_fixer_csv_path, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(["real_time", "relative_time", "seed_id", "mutator_id",
@@ -224,7 +236,8 @@ class ChiloFactory:
                              "semantic_random_error_count","semantic_error_count",
                              "semantic_error_llm_use_time",
                              "semantic_error_llm_count","semantic_llm_format_error",
-                             "semantic_up_token", "semantic_down_token","left_fix_queue_count", "at_last_is_all_correct"])
+                             "semantic_up_token", "semantic_down_token","left_fix_queue_count", "at_last_is_all_correct",
+                             "mask_count", "similarity", "unique_count", "total_count"])
 
         with open(self.structural_mutator_csv_path, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
@@ -239,7 +252,8 @@ class ChiloFactory:
                              "fuzz_seed_number", "is_by_ramdom", "fuzz_use_time","now_seed_id",
                              "real_fuzz_seed_id", "real_mutator_id","left_wait_exec_queue_count",
                              "ori_mutate_out_size", "real_mutate_out_size", "is_cut",
-                              "is_error_occur", "is_from_structural_mutator"])
+                              "is_error_occur", "is_from_structural_mutator",
+                             "thompson_score", "left_fuzz_count", "Ai", "Bi", "Ci"])
         with open(self.mutator_generator_csv_path, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(["real_time", "relative_time", "seed_id", "use_all_time", "llm_use_time",
@@ -289,7 +303,8 @@ class ChiloFactory:
     def write_main_csv(self, real_time, fuzz_count_seed_number,
                        fuzz_seed_number, is_by_ramdom,fuzz_use_time, now_seed_id,
                        real_fuzz_seed_id, real_mutator_id,left_wait_exec_queue_count, ori_mutate_out_size,
-                       real_mutate_out_size, is_cut, is_error_occur, is_from_structural_mutator):
+                       real_mutate_out_size, is_cut, is_error_occur, is_from_structural_mutator,
+                       thompson_score=0.0, left_fuzz_count=0, Ai=0.0, Bi=0.0, Ci=0.0):
         """
         向主CSV里面写入一行
         :param real_time: 插入的真实时间
@@ -306,6 +321,11 @@ class ChiloFactory:
         :param is_cut:  是否过长被截断
         :param is_error_occur: 变异器是否在最终出现了问题
         :param is_from_structural_mutator: 是否从结构化变异队列中取出的
+        :param thompson_score: 汤普森采样得分
+        :param left_fuzz_count: 能量调度值
+        :param Ai: Thompson Sampling值
+        :param Bi: 历史效率因子
+        :param Ci: 变异潜力因子
         :return:
         """
         with self.csv_lock:  # 加锁保护CSV写入
@@ -315,12 +335,13 @@ class ChiloFactory:
                                  fuzz_seed_number, is_by_ramdom, fuzz_use_time,
                                  now_seed_id, real_fuzz_seed_id, real_mutator_id, left_wait_exec_queue_count,
                                  ori_mutate_out_size,
-                                 real_mutate_out_size, is_cut, is_error_occur, is_from_structural_mutator])
+                                 real_mutate_out_size, is_cut, is_error_occur, is_from_structural_mutator,
+                                 thompson_score, left_fuzz_count, Ai, Bi, Ci])
 
     def write_parser_csv(self, real_time, seed_id, need_mutate_count, is_parsed, llm_time,
                          up_token, down_token,  llm_count,
                          llm_format_error_count, all_time, select_count,
-                         left_parser_queue_count, evicted_seed_total):
+                         left_parser_queue_count, evicted_seed_total, mask_count):
         """
         向parser的csv中写入一行
         :param left_parser_queue_count: 队列中排队的个数
@@ -336,6 +357,7 @@ class ChiloFactory:
         :param all_time: 完整过程所用时间
         :param select_count: 当前种子被选中的次数
         :param evicted_seed_total: 全局累计被淘汰的种子数量
+        :param mask_count: 掩码数量
         :return: 无
         """
         with self.csv_lock:  # 加锁保护CSV写入
@@ -344,7 +366,7 @@ class ChiloFactory:
                 writer.writerow([real_time, real_time - self.start_time, seed_id,
                                  need_mutate_count, is_parsed, llm_time, up_token,
                                  down_token,llm_count, llm_format_error_count, all_time, select_count,
-                                 left_parser_queue_count, evicted_seed_total])
+                                 left_parser_queue_count, evicted_seed_total, mask_count])
 
     def write_mutator_fixer_csv(self,real_time, seed_id,  all_use_time, mutator_id, need_mutate_count,
                                 all_llm_count, syntax_use_time, syntax_error_count, syntax_format_error_time,
@@ -353,7 +375,7 @@ class ChiloFactory:
                                 semantic_error_count,semantic_error_llm_use_time,
                                 semantic_error_llm_count,
                                 semantic_llm_format_error,semantic_up_token, semantic_down_token,left_fix_queue_count,
-                                at_last_is_all_correct):
+                                at_last_is_all_correct, mask_count, similarity, unique_count, total_count):
         """
         向mutator_fixer的csv中写入一行
         :param need_mutate_count: 需要进行变异的次数
@@ -380,12 +402,16 @@ class ChiloFactory:
         :param semantic_up_token: 语义修复上传总token
         :param semantic_down_token: 语义修复补全总token
         :param at_last_is_all_correct : 最终是否完全正确
+        :param mask_count: 掩码数量
+        :param similarity: 重复率
+        :param unique_count: 不重复结果数量
+        :param total_count: 总运行次数
         :return:
         """
         with self.csv_lock:  # 加锁保护CSV写入
             with open(self.mutator_fixer_csv_path, mode='a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow([real_time, real_time-self.start_time, seed_id, mutator_id, need_mutate_count, all_use_time,  all_llm_count, syntax_use_time,syntax_error_count, syntax_format_error_time,syntax_llm_use_time,syntax_llm_count,syntax_up_token, syntax_down_token,sematic_use_time, semantic_mask_error_count, semantic_random_error_count, semantic_error_count, semantic_error_llm_use_time,semantic_error_llm_count,semantic_llm_format_error,semantic_up_token, semantic_down_token,left_fix_queue_count,at_last_is_all_correct])
+                writer.writerow([real_time, real_time-self.start_time, seed_id, mutator_id, need_mutate_count, all_use_time,  all_llm_count, syntax_use_time,syntax_error_count, syntax_format_error_time,syntax_llm_use_time,syntax_llm_count,syntax_up_token, syntax_down_token,sematic_use_time, semantic_mask_error_count, semantic_random_error_count, semantic_error_count, semantic_error_llm_use_time,semantic_error_llm_count,semantic_llm_format_error,semantic_up_token, semantic_down_token,left_fix_queue_count,at_last_is_all_correct, mask_count, similarity, unique_count, total_count])
 
     def write_structural_mutator_csv(self, real_time, seed_id, new_seed_id,
                                      all_use_time, llm_up_token, llm_down_token, llm_count,
@@ -500,10 +526,13 @@ class ChiloFactory:
                 
             case 2:
                 #变异器池
-                self.main_logger.info(f"next_fuzz_strategy: {self.next_fuzz_strategy} 从变异器池中随机取出一个变异器")
+                self.main_logger.info(f"next_fuzz_strategy: {self.next_fuzz_strategy} 使用汤普森采样选中的变异器")
                 is_from_structural_mutator = False
                 is_by_random = True
-                mutator = self.mutator_pool.random_select_mutator()
+                # mutator = self.mutator_pool.random_select_mutator()
+                # 改为使用在 fuzz_count 中通过汤普森采样选中的变异器
+                mutator = self.current_thompson_mutator
+                # 注意：这里不需要判断 mutator 是否为 None，因为在 fuzz_count 中如果池为空，strategy 不会设置为 2
 
         assert mutator is not None
         if is_from_structural_mutator:
@@ -524,7 +553,10 @@ class ChiloFactory:
             spec.loader.exec_module(module)  # 执行文件内容，加载为模块对象
 
             if hasattr(module, "mutate"):
-                return module.mutate()  # 调用 mutate 函数并返回结果
+                # 使用 contextlib 屏蔽 stdout 和 stderr，防止变异器中的 print 干扰 AFL++ 界面
+                with open(os.devnull, "w") as fnull:
+                    with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
+                        return module.mutate()  # 调用 mutate 函数并返回结果
             else:
                 raise AttributeError(f"错误码：1203 {filepath} 中未找到 mutate() 函数")
 

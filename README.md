@@ -59,6 +59,7 @@ vim ./config.yaml
 echo core | sudo tee /proc/sys/kernel/core_pattern
 # 设置 ulimit 以避免 AddressSanitizer 内存分配错误
 ulimit -c unlimited
+ulimit -v unlimited 
 
 #下面请在主机终端2运行
 docker exec -it sqlite_chilofuzz_test bash

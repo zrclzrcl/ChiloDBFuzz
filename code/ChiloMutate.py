@@ -9,6 +9,8 @@ chilo_factory: cf.ChiloFactory | None = None
 fuzz_count_number = 0
 fuzz_number = 0
 last_bitmap_save = time.time()
+is_chilo_fuzzed = False     #避免每次运行都postrun 只chilo的postrun就行了
+left_fuzz_count = 0
 
 def init(seed):
     """
@@ -78,6 +80,7 @@ def fuzz_count(buf):
     :return: 变异次数
     """
     global fuzz_count_number
+    global left_fuzz_count
     fuzz_count_number += 1
     #应该采用队列的设计，先放入工厂的队列中，等待加工
     global chilo_factory
@@ -91,6 +94,8 @@ def fuzz_count(buf):
     with q_struct.mutex:
         if len(q_struct.queue) > 0:
             chilo_factory.next_fuzz_strategy = 0
+            chilo_factory.main_logger.info("有结构化变异待执行，将执行结构化变异，变异次数1")
+            left_fuzz_count = 1
             return 1
 
     # 否则：根据 wait_exec_mutator_list 前缀中连续同一对象实例的个数返回
@@ -102,10 +107,34 @@ def fuzz_count(buf):
         if len(chilo_factory.mutator_pool.mutator_list) > 0:
             #说明并非刚启动，变异器池已经有东西了
             chilo_factory.next_fuzz_strategy = 2
-            return mutate_time
+            
+            # 汤普森采样选择变异器
+            with chilo_factory.mutator_pool_lock:
+                mutator, score, Ai, Bi, Ci = chilo_factory.mutator_pool.thompson_select_mutator()
+            
+            chilo_factory.mutator_pool.total_select_count += 1 # 增加总选择次数
+            chilo_factory.current_thompson_mutator = mutator
+            chilo_factory.current_thompson_score = score
+            chilo_factory.current_Ai = Ai
+            chilo_factory.current_Bi = Bi
+            chilo_factory.current_Ci = Ci
+            chilo_factory.current_batch_new_edges = 0 # 重置当前批次的新边计数
+            
+            # 能量调度：max(int(score * 10), 5)，且设置上限200
+            energy = min(max(int(score * chilo_factory.energy_exchange_rate), chilo_factory.min_energy), chilo_factory.max_energy)
+            
+            chilo_factory.main_logger.info(f"无待第一次执行的变异器，将执行变异器池选择，变异次数{energy}")
+            chilo_factory.main_logger.info(f"汤普森采样选中变异器: {mutator.mutator_id}, 得分: {score}, 能量: {energy}")
+            
+            #注意，这里就不能再返回mutatetime了，而是在这里确定变异次数和能量调度
+            left_fuzz_count = energy
+            #这里我在想要不要
+            return energy
         else:
             #说明刚启动，需要让mutate_once等一等
             chilo_factory.next_fuzz_strategy = 0
+            chilo_factory.main_logger.info("chilo刚启动，再等一等")
+            left_fuzz_count = 0
             return 0    #AFL++暂时跳过，等待一下... 
     first_item = internal[0]
     consecutive = 1
@@ -115,6 +144,8 @@ def fuzz_count(buf):
         else:
             break
     chilo_factory.next_fuzz_strategy = 1
+    chilo_factory.main_logger.info("无结构化，有待第一次执行的变异器，将执行待执行变异器，变异次数{consecutive}")
+    left_fuzz_count = consecutive
     return consecutive    #这里就是待执行变异器，需要返回连续的个数
 
 def splice_optout():
@@ -137,6 +168,8 @@ def fuzz(buf, add_buf, max_size):
     global chilo_factory
     global fuzz_number
     global fuzz_count_number
+    global is_chilo_fuzzed
+    global left_fuzz_count
     fuzz_number += 1
     is_cut = False
     #思路：
@@ -173,7 +206,11 @@ def fuzz(buf, add_buf, max_size):
     chilo_factory.write_main_csv(fuzz_end_time, fuzz_count_number, fuzz_number,
                                  is_random, fuzz_end_time - fuzz_start_time, now_seed_id, seed_id, mutator_id,
                                  queue_size, ori_mutate_out_size,
-                                 real_mutate_out_size, is_cut, is_error_occur, is_from_structural_mutator)
+                                 real_mutate_out_size, is_cut, is_error_occur, is_from_structural_mutator,
+                                 chilo_factory.current_thompson_score, left_fuzz_count,
+                                 chilo_factory.current_Ai, chilo_factory.current_Bi, chilo_factory.current_Ci)
+    is_chilo_fuzzed = True
+    left_fuzz_count -= 1
     return mutated_out
 
 
@@ -185,9 +222,13 @@ def post_run():
     global chilo_factory
     global last_bitmap_save
     global fuzz_count_number
+    global is_chilo_fuzzed
 
     if fuzz_count_number == 0:
         #dry run阶段，跳过postrun
+        pass
+    elif not is_chilo_fuzzed:
+        #chilo_fuzzed为False 说明刚刚的fuzz run都不是chilo的，应该跳过
         pass
     else:
         #读取刚刚的fuzz的测试用例的边覆盖位图情况
@@ -195,9 +236,23 @@ def post_run():
         new_edges = chilo_factory.bitmap.add_bitmap(now_bitmap)
         chilo_factory.main_logger.info(f"新增边数量：{new_edges}")
 
+        # 汤普森采样反馈逻辑
+        if chilo_factory.next_fuzz_strategy == 2 and chilo_factory.current_thompson_mutator:
+            # 累加当前批次的新边数
+            chilo_factory.current_batch_new_edges += new_edges
+            
+            # 如果是本轮最后一次变异，则进行结算
+            # left_fuzz_count 在 fuzz() 函数结束前已经减 1
+            # 因此当 post_run 运行时，如果 left_fuzz_count 为 0，说明刚刚结束的是最后一次 fuzz
+            if left_fuzz_count == 0:
+                is_success = chilo_factory.current_batch_new_edges > 0
+                chilo_factory.current_thompson_mutator.update_stats(is_success, chilo_factory.current_batch_new_edges)
+                chilo_factory.main_logger.info(f"汤普森采样批次结束. 变异器: {chilo_factory.current_thompson_mutator.mutator_id}, 本批次总新边: {chilo_factory.current_batch_new_edges}, 结果: {'成功' if is_success else '失败'}")
+
         if time.time() - last_bitmap_save > 5:
             chilo_factory.write_bitmap()
             last_bitmap_save = time.time()
+        is_chilo_fuzzed = False
     
 
 #当AFL++停止或结束的时候调用该函数，进行清理
