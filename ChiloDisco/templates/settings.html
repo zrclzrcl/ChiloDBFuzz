@@ -1,176 +1,222 @@
 <!doctype html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ChiloDisco · 系统设置</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css" />
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="/static/js/toast.js"></script>
+  <style>
+    .settings-container {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .settings-section {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .setting-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 8px;
+      border: 1px solid var(--glass-border);
+    }
+
+    .setting-info h4 {
+      margin: 0 0 4px 0;
+      color: var(--text-primary);
+    }
+
+    .setting-info p {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    /* Switch Component */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 26px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--bg-secondary);
+      transition: .4s;
+      border-radius: 34px;
+      border: 1px solid var(--glass-border);
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: var(--text-secondary);
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked+.slider {
+      background-color: var(--accent-primary);
+      border-color: var(--accent-primary);
+    }
+
+    input:checked+.slider:before {
+      transform: translateX(22px);
+      background-color: #fff;
+    }
+
+    input:disabled+.slider {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .kbd {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--glass-border);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      margin-right: 0.5rem;
+    }
+  </style>
 </head>
+
 <body>
-  <canvas id="globalParticles"></canvas>
-  <div id="app" class="layout">
-    <aside class="sidenav">
-      <div class="nav-brand">
-        <span class="logo">⚡</span>
-        <span class="title">ChiloDisco</span>
+  <div id="app" class="app-layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">⚡</span>
+        <span>ChiloDisco</span>
       </div>
-      <nav class="nav-links">
-        <a href="/">日志监控</a>
-        <a href="/plot">数据大屏</a>
-        <a href="/bitmap">Bitmap 热力图</a>
-        <a href="/downloads">结果下载</a>
-        <a class="active" href="/settings">系统设置</a>
+      <nav class="nav-menu">
+        <a href="/" class="nav-item"><span>📊 日志监控</span></a>
+        <a href="/plot" class="nav-item"><span>📈 数据大屏</span></a>
+        <a href="/bitmap" class="nav-item"><span>🗺️ Bitmap 热力图</span></a>
+        <a href="/downloads" class="nav-item"><span>💾 结果下载</span></a>
+        <a href="/settings" class="nav-item active"><span>⚙️ 系统设置</span></a>
       </nav>
     </aside>
 
-    <div class="content">
-      <header class="app-header">
-        <div class="brand">
-          <span class="subtitle">⚙️ 系统设置与个性化配置</span>
+    <main class="main-content">
+      <div class="content-scrollable">
+        <div class="settings-container">
+
+          <header>
+            <h2>Configuration</h2>
+            <p class="text-muted">Customize your ChiloDisco experience.</p>
+          </header>
+
+          <section class="glass-panel" style="padding: 1.5rem;">
+            <h3 class="mb-4">🎨 Visual Effects</h3>
+            <div class="settings-section">
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <h4>Performance Mode</h4>
+                  <p>Disable all animations for better performance.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" v-model="performanceMode">
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <h4>Particle Effects</h4>
+                  <p>Enable background particle animation.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" v-model="particlesEnabled" :disabled="performanceMode">
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <h4>Glass Glow</h4>
+                  <p>Enable neon glow on borders.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" v-model="glowEnabled" :disabled="performanceMode">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="glass-panel" style="padding: 1.5rem;">
+            <h3 class="mb-4">⚡ Diagnostics</h3>
+            <div class="flex-row gap-4">
+              <div class="glass-panel" style="padding: 1rem; flex: 1; text-align: center;">
+                <div class="text-muted text-sm uppercase">FPS</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-success);">{{ fps }}</div>
+              </div>
+              <div class="glass-panel" style="padding: 1rem; flex: 1; text-align: center;">
+                <div class="text-muted text-sm uppercase">Memory</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-primary);">{{ memoryUsage }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="glass-panel" style="padding: 1.5rem;">
+            <h3 class="mb-4">💾 Data Management</h3>
+            <div class="flex-row gap-2 flex-wrap">
+              <button class="btn btn-glass" @click="clearCache">Trash Cache</button>
+              <button class="btn btn-glass" @click="resetSettings">Reset Default</button>
+              <button class="btn btn-primary" @click="exportSettings">Export Config</button>
+              <button class="btn btn-primary" @click="importSettings">Import Config</button>
+            </div>
+          </section>
+
+          <section class="glass-panel" style="padding: 1.5rem;">
+            <h3 class="mb-4">⌨️ Shortcuts</h3>
+            <div class="setting-item">
+              <div><span class="kbd">Space</span> Pause/Resume</div>
+            </div>
+            <div class="setting-item">
+              <div><span class="kbd">Ctrl</span>+<span class="kbd">F</span> Search</div>
+            </div>
+            <!-- Add more as needed -->
+          </section>
+
         </div>
-      </header>
-
-      <main class="settings-container">
-        <section class="settings-card">
-          <div class="settings-header">
-            <h2>🎨 视觉效果</h2>
-            <p>调整界面动画和视觉特效</p>
-          </div>
-          <div class="settings-body">
-            <div class="setting-item">
-              <div class="setting-info">
-                <label class="setting-label">性能模式</label>
-                <p class="setting-desc">关闭所有动画和特效，提升性能和流畅度</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" v-model="performanceMode" />
-                <span class="slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <label class="setting-label">粒子特效</label>
-                <p class="setting-desc">背景粒子动画（高性能消耗）</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" v-model="particlesEnabled" :disabled="performanceMode" />
-                <span class="slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <label class="setting-label">扫描线特效</label>
-                <p class="setting-desc">赛博朋克风格扫描线动画</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" v-model="scanLinesEnabled" :disabled="performanceMode" />
-                <span class="slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <label class="setting-label">发光特效</label>
-                <p class="setting-desc">边框和文字的霓虹发光效果</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" v-model="glowEnabled" :disabled="performanceMode" />
-                <span class="slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <label class="setting-label">呼吸动画</label>
-                <p class="setting-desc">卡片和按钮的呼吸发光动画</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" v-model="breathingEnabled" :disabled="performanceMode" />
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-card">
-          <div class="settings-header">
-            <h2>⚡ 性能统计</h2>
-            <p>实时性能监控</p>
-          </div>
-          <div class="settings-body">
-            <div class="stat-row">
-              <span class="stat-label">FPS（帧率）</span>
-              <span class="stat-value">{{ fps }}</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">内存使用</span>
-              <span class="stat-value">{{ memoryUsage }}</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">动画数量</span>
-              <span class="stat-value">{{ animationCount }}</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-card">
-          <div class="settings-header">
-            <h2>⌨️ 快捷键</h2>
-            <p>键盘快捷操作</p>
-          </div>
-          <div class="settings-body">
-            <div class="shortcut-item">
-              <kbd>Space</kbd>
-              <span>暂停/继续刷新</span>
-            </div>
-            <div class="shortcut-item">
-              <kbd>Ctrl</kbd> + <kbd>F</kbd>
-              <span>搜索日志</span>
-            </div>
-            <div class="shortcut-item">
-              <kbd>Esc</kbd>
-              <span>清除搜索</span>
-            </div>
-            <div class="shortcut-item">
-              <kbd>Ctrl</kbd> + <kbd>S</kbd>
-              <span>打开设置</span>
-            </div>
-            <div class="shortcut-item">
-              <kbd>双击日志</kbd>
-              <span>复制内容</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-card">
-          <div class="settings-header">
-            <h2>💾 数据管理</h2>
-            <p>缓存和存储管理</p>
-          </div>
-          <div class="settings-body">
-            <button class="btn primary" @click="clearCache">🗑️ 清除缓存</button>
-            <button class="btn" @click="resetSettings">🔄 重置所有设置</button>
-            <button class="btn" @click="exportSettings">📥 导出配置</button>
-            <button class="btn" @click="importSettings">📤 导入配置</button>
-          </div>
-        </section>
-      </main>
-
-      <footer class="app-footer">
-        <div class="legend">
-          <span>提示：</span>
-          <span>设置会自动保存到浏览器本地存储</span>
-        </div>
-        <div class="copyright">© 2025 ChiloDisco</div>
-      </footer>
-    </div>
+      </div>
+    </main>
   </div>
 
   <script>
@@ -178,278 +224,64 @@
 
     createApp({
       setup() {
-        // 从 localStorage 加载设置
         const performanceMode = ref(localStorage.getItem('cd_performanceMode') === 'true');
         const particlesEnabled = ref(localStorage.getItem('cd_particles') !== 'false');
-        const scanLinesEnabled = ref(localStorage.getItem('cd_scanLines') !== 'false');
         const glowEnabled = ref(localStorage.getItem('cd_glow') !== 'false');
-        const breathingEnabled = ref(localStorage.getItem('cd_breathing') !== 'false');
 
         const fps = ref(60);
         const memoryUsage = ref('N/A');
-        const animationCount = computed(() => {
-          let count = 0;
-          if (particlesEnabled.value) count += 80;
-          if (scanLinesEnabled.value) count += 12;
-          if (breathingEnabled.value) count += 6;
-          return count;
+
+        watch(performanceMode, (val) => {
+          localStorage.setItem('cd_performanceMode', val);
+          if (val) { particlesEnabled.value = false; glowEnabled.value = false; }
+          else { particlesEnabled.value = true; glowEnabled.value = true; }
         });
 
-        // 监听性能模式变化
-        watch(performanceMode, (newVal) => {
-          localStorage.setItem('cd_performanceMode', newVal);
-          if (newVal) {
-            // 性能模式：关闭所有特效
-            particlesEnabled.value = false;
-            scanLinesEnabled.value = false;
-            glowEnabled.value = false;
-            breathingEnabled.value = false;
-            applySettings();
-          } else {
-            // 恢复默认
-            particlesEnabled.value = true;
-            scanLinesEnabled.value = true;
-            glowEnabled.value = true;
-            breathingEnabled.value = true;
-            applySettings();
-          }
-        });
-
-        // 监听各项设置变化
-        watch([particlesEnabled, scanLinesEnabled, glowEnabled, breathingEnabled], ([p, s, g, b]) => {
+        watch([particlesEnabled, glowEnabled], ([p, g]) => {
           localStorage.setItem('cd_particles', p);
-          localStorage.setItem('cd_scanLines', s);
           localStorage.setItem('cd_glow', g);
-          localStorage.setItem('cd_breathing', b);
-          applySettings();
         });
 
-        function applySettings() {
-          const root = document.documentElement;
-          
-          // 粒子特效
-          const canvas = document.getElementById('globalParticles');
-          if (canvas) {
-            canvas.style.display = particlesEnabled.value ? 'block' : 'none';
-          }
-
-          // 扫描线特效
-          if (scanLinesEnabled.value) {
-            root.style.setProperty('--scan-animation', 'scanLine 10s ease-in-out infinite');
-          } else {
-            root.style.setProperty('--scan-animation', 'none');
-          }
-
-          // 发光特效
-          if (!glowEnabled.value) {
-            root.classList.add('no-glow');
-          } else {
-            root.classList.remove('no-glow');
-          }
-
-          // 呼吸动画
-          if (!breathingEnabled.value) {
-            root.classList.add('no-breathing');
-          } else {
-            root.classList.remove('no-breathing');
-          }
-        }
-
-        function clearCache() {
-          sessionStorage.clear();
-          window.ChiloDisco?.toast?.success('缓存已清除！');
-        }
-
-        function resetSettings() {
-          if (confirm('确定要重置所有设置吗？')) {
-            localStorage.removeItem('cd_performanceMode');
-            localStorage.removeItem('cd_particles');
-            localStorage.removeItem('cd_scanLines');
-            localStorage.removeItem('cd_glow');
-            localStorage.removeItem('cd_breathing');
-            localStorage.removeItem('cd_interval');
-            localStorage.removeItem('cd_maxLines');
-            localStorage.removeItem('cd_plot_interval');
-            window.ChiloDisco?.toast?.success('设置已重置，页面即将刷新...');
-            setTimeout(() => location.reload(), 1000);
-          }
-        }
-
-        function exportSettings() {
-          const settings = {
-            performanceMode: performanceMode.value,
-            particles: particlesEnabled.value,
-            scanLines: scanLinesEnabled.value,
-            glow: glowEnabled.value,
-            breathing: breathingEnabled.value,
-            interval: localStorage.getItem('cd_interval'),
-            maxLines: localStorage.getItem('cd_maxLines'),
-          };
-          const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'chilodisco_settings.json';
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-
-        function importSettings() {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = '.json';
-          input.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-              const reader = new FileReader();
-              reader.onload = (event) => {
-                try {
-                  const settings = JSON.parse(event.target.result);
-                  performanceMode.value = settings.performanceMode ?? false;
-                  particlesEnabled.value = settings.particles ?? true;
-                  scanLinesEnabled.value = settings.scanLines ?? true;
-                  glowEnabled.value = settings.glow ?? true;
-                  breathingEnabled.value = settings.breathing ?? true;
-                  if (settings.interval) localStorage.setItem('cd_interval', settings.interval);
-                  if (settings.maxLines) localStorage.setItem('cd_maxLines', settings.maxLines);
-                  window.ChiloDisco?.toast?.success('设置已导入，页面即将刷新...');
-                  setTimeout(() => location.reload(), 1000);
-                } catch (err) {
-                  window.ChiloDisco?.toast?.error('文件格式错误！');
-                }
-              };
-              reader.readAsText(file);
-            }
-          };
-          input.click();
-        }
-
-        // FPS 监测
+        // Diagnostics
         let lastTime = performance.now();
         let frames = 0;
-        function measureFPS() {
+        function loop() {
           frames++;
           const now = performance.now();
           if (now >= lastTime + 1000) {
-            fps.value = Math.round((frames * 1000) / (now - lastTime));
+            fps.value = frames;
             frames = 0;
             lastTime = now;
+            if (performance.memory) {
+              memoryUsage.value = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024) + ' MB';
+            }
           }
-          requestAnimationFrame(measureFPS);
-        }
-
-        // 内存监测
-        function measureMemory() {
-          if (performance.memory) {
-            const used = performance.memory.usedJSHeapSize;
-            const total = performance.memory.totalJSHeapSize;
-            memoryUsage.value = `${(used / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB`;
-          }
+          requestAnimationFrame(loop);
         }
 
         onMounted(() => {
-          applySettings();
-          measureFPS();
-          setInterval(measureMemory, 2000);
+          loop();
         });
 
+        function clearCache() { sessionStorage.clear(); alert('Cache cleared'); }
+        function resetSettings() { localStorage.clear(); location.reload(); }
+        function exportSettings() {
+          const data = JSON.stringify({ performanceMode: performanceMode.value });
+          const blob = new Blob([data], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'config.json'; a.click();
+        }
+        function importSettings() { alert('Not implemented in demo'); }
+
         return {
-          performanceMode,
-          particlesEnabled,
-          scanLinesEnabled,
-          glowEnabled,
-          breathingEnabled,
-          fps,
-          memoryUsage,
-          animationCount,
-          clearCache,
-          resetSettings,
-          exportSettings,
-          importSettings
+          performanceMode, particlesEnabled, glowEnabled,
+          fps, memoryUsage,
+          clearCache, resetSettings, exportSettings, importSettings
         };
       }
     }).mount('#app');
-
-    // 霓虹粒子特效
-    (function() {
-      const canvas = document.getElementById('globalParticles');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      
-      function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-      }
-      resize();
-      
-      const particles = [];
-      const N = Math.max(80, Math.floor((canvas.width * canvas.height) / 8000));
-      
-      const colors = [
-        { r: 0, g: 240, b: 255 },
-        { r: 139, g: 92, b: 246 },
-        { r: 255, g: 0, b: 110 },
-        { r: 0, g: 255, b: 159 }
-      ];
-      
-      for (let i = 0; i < N; i++) {
-        const color = colors[Math.floor(Math.random() * colors.length)];
-        particles.push({
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-          r: Math.random() * 2 + 1,
-          vx: (Math.random() - 0.5) * 0.5,
-          vy: (Math.random() - 0.5) * 0.5,
-          color: color,
-          alpha: Math.random() * 0.6 + 0.4,
-          phase: Math.random() * Math.PI * 2,
-          speed: Math.random() * 0.03 + 0.01
-        });
-      }
-      
-      function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        for (const p of particles) {
-          p.x += p.vx;
-          p.y += p.vy;
-          p.phase += p.speed;
-          
-          if (p.x < -10) p.x = canvas.width + 10;
-          if (p.x > canvas.width + 10) p.x = -10;
-          if (p.y < -10) p.y = canvas.height + 10;
-          if (p.y > canvas.height + 10) p.y = -10;
-          
-          const glow = 0.6 + 0.4 * Math.sin(p.phase);
-          const glowRadius = p.r * 4 * glow;
-          
-          const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowRadius);
-          grad.addColorStop(0, `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha * glow})`);
-          grad.addColorStop(0.4, `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha * glow * 0.5})`);
-          grad.addColorStop(1, `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, 0)`);
-          
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, glowRadius, 0, Math.PI * 2);
-          ctx.fill();
-          
-          ctx.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha * glow})`;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        
-        requestAnimationFrame(animate);
-      }
-      
-      animate();
-      window.addEventListener('resize', resize);
-      
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-    })();
   </script>
 </body>
-</html>
 
+</html>

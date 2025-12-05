@@ -1,238 +1,284 @@
 <!doctype html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ChiloDisco · 日志监控</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css" />
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="/static/js/toast.js"></script>
+  <style>
+    /* Page specific overrides for log monitor */
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 1rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .search-toolbar {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 0.75rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--glass-border);
+    }
+
+    .search-box {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+    }
+
+    .search-input:focus {
+      outline: none;
+    }
+
+    .log-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .log-card {
+      display: flex;
+      flex-direction: column;
+      height: 500px;
+      /* Fixed height for scrollable logs */
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .log-card:hover {
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--glass-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .file-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: var(--accent-primary);
+    }
+
+    .meta-info {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .log-body {
+      flex: 1;
+      overflow: auto;
+      padding: 0.5rem;
+      margin: 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      color: #d1d5db;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .recency-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      background-color: var(--text-secondary);
+      box-shadow: 0 0 5px currentColor;
+    }
+
+    .match-highlight {
+      background: rgba(255, 255, 0, 0.2);
+      color: #ffff00;
+      border-radius: 2px;
+    }
+  </style>
 </head>
+
 <body>
-  <canvas id="globalParticles"></canvas>
-  <div id="app" class="layout">
-    <aside class="sidenav">
-      <div class="nav-brand">
-        <span class="logo">⚡</span>
-        <span class="title">ChiloDisco</span>
+  <div id="app" class="app-layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">⚡</span>
+        <span>ChiloDisco</span>
       </div>
-      <nav class="nav-links">
-        <a class="active" href="/">日志监控</a>
-        <a href="/plot">数据大屏</a>
-        <a href="/bitmap">Bitmap 热力图</a>
-        <a href="/downloads">结果下载</a>
-        <a href="/settings">系统设置</a>
+      <nav class="nav-menu">
+        <a href="/" class="nav-item active">
+          <span>📊 日志监控</span>
+        </a>
+        <a href="/plot" class="nav-item">
+          <span>📈 数据大屏</span>
+        </a>
+        <a href="/bitmap" class="nav-item">
+          <span>🗺️ Bitmap 热力图</span>
+        </a>
+        <a href="/downloads" class="nav-item">
+          <span>💾 结果下载</span>
+        </a>
+        <a href="/settings" class="nav-item">
+          <span>⚙️ 系统设置</span>
+        </a>
       </nav>
     </aside>
 
-    <div class="content">
-      <header class="app-header">
-        <div class="brand">
-          <span class="subtitle">AFL++ Custom Mutator · 实时日志监控</span>
-        </div>
-        <div class="controls">
-          <button class="btn" @click="togglePause" :title="paused ? '继续刷新' : '暂停刷新'">
-            {{ paused ? '▶️ 继续' : '⏸️ 暂停' }}
-          </button>
-          <label>刷新频率</label>
-          <select v-model.number="interval" :disabled="paused">
-            <option :value="200">0.2s</option>
-            <option :value="500">0.5s</option>
-            <option :value="1000">1s</option>
-            <option :value="2000">2s</option>
-            <option :value="5000">5s</option>
-            <option :value="10000">10s</option>
-          </select>
-          <label>显示行数</label>
-          <select v-model.number="maxLines">
-            <option :value="200">200</option>
-            <option :value="300">300</option>
-            <option :value="500">500</option>
-            <option :value="800">800</option>
-          </select>
-        </div>
-      </header>
+    <main class="main-content">
+      <div class="content-scrollable">
+        <div style="width: 100%; height: 100%;">
 
-      <!-- 搜索工具栏 -->
-      <div class="search-toolbar">
-        <div class="search-box">
-          <span class="search-icon">🔍</span>
-          <input 
-            type="text" 
-            v-model="searchQuery" 
-            placeholder="搜索日志内容... (支持正则表达式)"
-            class="search-input"
-            @keydown.escape="searchQuery = ''"
-          />
-          <button v-if="searchQuery" @click="searchQuery = ''" class="clear-btn" title="清除搜索">✕</button>
-        </div>
-        <div class="search-stats" v-if="searchQuery">
-          <span class="match-count">{{ totalMatches }} 条匹配</span>
-        </div>
-        <div class="filter-toggles">
-          <label class="toggle-label" title="只显示包含错误的行">
-            <input type="checkbox" v-model="filterError" />
-            <span>🔴 仅错误</span>
-          </label>
-          <label class="toggle-label" title="只显示包含警告的行">
-            <input type="checkbox" v-model="filterWarn" />
-            <span>🟡 仅警告</span>
-          </label>
-        </div>
-      </div>
+          <header class="app-header">
+            <div>
+              <h2 style="margin: 0;">实时日志监控</h2>
+              <span class="text-sm text-muted">AFL++ Custom Mutator Monitor</span>
+            </div>
+            <div class="controls">
+              <button class="btn btn-glass" @click="togglePause" :class="{ 'btn-primary': !paused }">
+                {{ paused ? '▶️ 继续刷新' : '⏸️ 暂停刷新' }}
+              </button>
 
-      <main class="grid">
-        {% raw %}
-        <section class="card" v-for="panel in filteredPanels" :key="panel.key" :style="{ '--h': panel.hue }">
-          <header class="card-header">
-            <div class="name">{{ getDisplayName(panel.key) }}</div>
-            <div class="file">{{ panel.filename }}</div>
-            <div class="meta">
-              <span class="mtime" :title="'最近修改：' + panel.mtimeText">{{ panel.mtimeText }}</span>
-              <span class="size" :title="'大小：' + panel.sizeText">{{ panel.sizeText }}</span>
-              <span class="recency-dot" :title="'新鲜度：' + panel.bucketLabel" :style="{ color: panel.accent }"></span>
-              <span v-if="panel.matchCount > 0" class="match-badge" title="匹配行数">{{ panel.matchCount }}</span>
+              <div class="flex-row items-center gap-2"
+                style="background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 6px;">
+                <span class="text-sm text-muted">频率</span>
+                <select v-model.number="interval" :disabled="paused"
+                  style="padding: 2px; border: none; background: transparent;">
+                  <option :value="200">0.2s</option>
+                  <option :value="500">0.5s</option>
+                  <option :value="1000">1s</option>
+                  <option :value="2000">2s</option>
+                  <option :value="5000">5s</option>
+                </select>
+              </div>
+
+              <div class="flex-row items-center gap-2"
+                style="background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 6px;">
+                <span class="text-sm text-muted">行数</span>
+                <select v-model.number="maxLines" style="padding: 2px; border: none; background: transparent;">
+                  <option :value="200">200</option>
+                  <option :value="500">500</option>
+                  <option :value="800">800</option>
+                </select>
+              </div>
             </div>
           </header>
-          <pre class="log-body" ref="scrollers" @dblclick="copyLogContent($event, panel)">
-            <code class="log-lines" v-html="panel.displayHtml"></code>
-          </pre>
-        </section>
-        {% endraw %}
-      </main>
 
-      <footer class="app-footer">
-        <div class="legend">
-          <span>数据新鲜度：</span>
-          <span class="legend-dot" style="--h:140">0–2s</span>
-          <span class="legend-dot" style="--h:105">2–5s</span>
-          <span class="legend-dot" style="--h:80">5–10s</span>
-          <span class="legend-dot" style="--h:60">10–20s</span>
-          <span class="legend-dot" style="--h:40">20–40s</span>
-          <span class="legend-dot" style="--h:25">40–60s</span>
-          <span class="legend-dot" style="--h:12">60–90s</span>
-          <span class="legend-dot" style="--h:0">≥90s</span>
+          <!-- Search Toolbar -->
+          <div class="search-toolbar glass-panel">
+            <div class="search-box">
+              <span>🔍</span>
+              <input type="text" v-model="searchQuery" placeholder="搜索日志内容... (支持正则表达式)" class="search-input"
+                @keydown.escape="searchQuery = ''" />
+              <button v-if="searchQuery" @click="searchQuery = ''" class="btn btn-glass"
+                style="padding: 2px 8px; font-size: 12px;">✕</button>
+            </div>
+
+            <div v-if="searchQuery" class="text-sm text-muted">
+              {{ totalMatches }} 条匹配
+            </div>
+
+            <div class="flex-row gap-4">
+              <label class="flex-row items-center gap-2 text-sm" title="只显示包含错误的行" style="cursor: pointer;">
+                <input type="checkbox" v-model="filterError" />
+                <span :style="{ color: filterError ? '#ef4444' : '' }">🔴 仅错误</span>
+              </label>
+              <label class="flex-row items-center gap-2 text-sm" title="只显示包含警告的行" style="cursor: pointer;">
+                <input type="checkbox" v-model="filterWarn" />
+                <span :style="{ color: filterWarn ? '#f59e0b' : '' }">🟡 仅警告</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Log Grid -->
+          <div class="log-grid">
+            {% raw %}
+            <section class="log-card glass-panel" v-for="panel in filteredPanels" :key="panel.key"
+              :style="{ borderColor: panel.accent ? panel.accent : '' }">
+              <header class="card-header">
+                <div>
+                  <div class="file-name">{{ panel.filename }}</div>
+                  <div class="text-sm text-muted">{{ getDisplayName(panel.key) }}</div>
+                </div>
+                <div class="meta-info">
+                  <span :title="'最近修改：' + panel.mtimeText">{{ panel.mtimeText }}</span>
+                  <span v-if="panel.bucketLabel" class="recency-dot"
+                    :style="{ color: panel.accent, boxShadow: '0 0 8px ' + panel.accent }"></span>
+                  <span v-if="panel.matchCount > 0" class="badge"
+                    style="background:var(--accent-primary); padding: 2px 6px; border-radius: 4px; color: #fff;">{{
+                    panel.matchCount }}</span>
+                </div>
+              </header>
+              <pre class="log-body" ref="scrollers"
+                @dblclick="copyLogContent($event, panel)"><code class="log-lines" v-html="panel.displayHtml"></code></pre>
+            </section>
+            {% endraw %}
+          </div>
+
+          <footer
+            style="margin-top: 2rem; text-align: center; color: var(--text-secondary); font-size: 0.8rem; padding-bottom: 1rem;">
+            © 2025 ChiloDisco · Log Monitor
+          </footer>
+
         </div>
-        <div class="copyright">© 2025 ChiloDisco</div>
-      </footer>
-    </div>
+      </div>
+    </main>
   </div>
 
   <script src="/static/js/app.js"></script>
   <script>
-    // 全局快捷键支持
+    // Global Shortcuts
     document.addEventListener('keydown', (e) => {
-      // Space - 暂停/继续刷新
       if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
         e.preventDefault();
         const app = document.querySelector('#app').__vueParentComponent?.ctx;
         if (app && app.togglePause) app.togglePause();
       }
-      
-      // Ctrl+F - 搜索
       if (e.ctrlKey && e.key === 'f') {
         e.preventDefault();
-        const searchInput = document.querySelector('.search-input');
-        if (searchInput) {
-          searchInput.focus();
-          searchInput.select();
-        }
-      }
-      
-      // Ctrl+S - 打开设置
-      if (e.ctrlKey && e.key === 's') {
-        e.preventDefault();
-        window.location.href = '/settings';
+        const s = document.querySelector('.search-input');
+        if (s) { s.focus(); s.select(); }
       }
     });
   </script>
-  <script>
-    // 霓虹粒子特效 - 高密度可见版
-    (function() {
-      const canvas = document.getElementById('globalParticles');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      
-      function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-      }
-      resize();
-      
-      const particles = [];
-      const N = Math.max(80, Math.floor((canvas.width * canvas.height) / 8000));
-      
-      const colors = [
-        { r: 0, g: 240, b: 255 },    // 霓虹青
-        { r: 139, g: 92, b: 246 },   // 霓虹紫
-        { r: 255, g: 0, b: 110 },    // 霓虹粉
-        { r: 0, g: 255, b: 159 }     // 霓虹绿
-      ];
-      
-      for (let i = 0; i < N; i++) {
-        const color = colors[Math.floor(Math.random() * colors.length)];
-        particles.push({
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-          r: Math.random() * 2 + 1,
-          vx: (Math.random() - 0.5) * 0.5,
-          vy: (Math.random() - 0.5) * 0.5,
-          color: color,
-          alpha: Math.random() * 0.6 + 0.4,
-          phase: Math.random() * Math.PI * 2,
-          speed: Math.random() * 0.03 + 0.01
-        });
-      }
-      
-      function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        for (const p of particles) {
-          p.x += p.vx;
-          p.y += p.vy;
-          p.phase += p.speed;
-          
-          if (p.x < -10) p.x = canvas.width + 10;
-          if (p.x > canvas.width + 10) p.x = -10;
-          if (p.y < -10) p.y = canvas.height + 10;
-          if (p.y > canvas.height + 10) p.y = -10;
-          
-          const glow = 0.6 + 0.4 * Math.sin(p.phase);
-          const glowRadius = p.r * 4 * glow;
-          
-          // 外层发光
-          const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowRadius);
-          grad.addColorStop(0, `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha * glow})`);
-          grad.addColorStop(0.4, `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha * glow * 0.5})`);
-          grad.addColorStop(1, `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, 0)`);
-          
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, glowRadius, 0, Math.PI * 2);
-          ctx.fill();
-          
-          // 核心亮点
-          ctx.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha * glow})`;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        
-        requestAnimationFrame(animate);
-      }
-      
-      animate();
-      window.addEventListener('resize', () => {
-        resize();
-      });
-      
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-    })();
-  </script>
 </body>
+
 </html>
