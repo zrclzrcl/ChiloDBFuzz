@@ -33,6 +33,16 @@
         <a href="/api/download/csv/zip" class="btn btn-primary full-width" download>📥 打包下载 CSV</a>
       </div>
 
+      <!-- Log Batch -->
+      <div class="glass-panel action-card">
+        <div class="card-content">
+          <div class="card-title" style="color: var(--neon-orange)">📋 日志批量打包</div>
+          <div class="card-desc">批量下载所有日志文件</div>
+          <div class="card-sub">包含运行日志、错误日志等</div>
+        </div>
+        <a href="/api/download/log/zip" class="btn btn-primary full-width" download>📥 打包下载日志</a>
+      </div>
+
       <!-- AFL Queue -->
       <div class="glass-panel action-card">
         <div class="card-content">

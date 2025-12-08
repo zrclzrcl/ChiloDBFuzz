@@ -897,6 +897,26 @@ def download_log():
     return send_file(p, as_attachment=True, download_name=os.path.basename(p))
 
 
+@app.route('/api/download/log/zip')
+def download_log_zip():
+    """打包下载所有日志文件"""
+    import zipfile
+    buf = io.BytesIO()
+    log_paths = load_log_paths()
+    with zipfile.ZipFile(buf, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for k, p in log_paths.items():
+            if p and os.path.exists(p):
+                arcname = os.path.basename(p) or (k + '.log')
+                try:
+                    zf.write(p, arcname=arcname)
+                except Exception:
+                    # 如果写入失败，写入一个占位文本
+                    zf.writestr(arcname or (k + '.log'), '')
+    buf.seek(0)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return send_file(buf, as_attachment=True, download_name=f'chilo_logs_{ts}.zip')
+
+
 @app.route('/api/download/csv/zip')
 def download_csv_zip():
     import zipfile
