@@ -63,6 +63,46 @@ let ripples = [] // { x, y, r, age, color }
 let lastData = []
 let startTime = Date.now()
 
+// --- Inferno Color Palette (like version 5.0) ---
+// Pre-computed 256-level palette for fast lookups
+const infernoPalette = (() => {
+  const stops = [
+    { pos: 0,   r: 0,   g: 0,   b: 4   },   // 0x000004
+    { pos: 64,  r: 31,  g: 12,  b: 72  },   // 0x1f0c48
+    { pos: 128, r: 181, g: 54,  b: 121 },   // 0xb53679
+    { pos: 192, r: 252, g: 140, b: 58  },   // 0xfc8c3a
+    { pos: 255, r: 252, g: 253, b: 191 }    // 0xfcfdbf
+  ]
+  const palette = new Uint8Array(256 * 3)
+  for (let i = 0; i < 256; i++) {
+    // Find the two stops to interpolate between
+    let s1 = stops[0], s2 = stops[1]
+    for (let j = 1; j < stops.length; j++) {
+      if (i <= stops[j].pos) {
+        s1 = stops[j - 1]
+        s2 = stops[j]
+        break
+      }
+    }
+    const t = s2.pos === s1.pos ? 0 : (i - s1.pos) / (s2.pos - s1.pos)
+    palette[i * 3]     = Math.round(s1.r + (s2.r - s1.r) * t)
+    palette[i * 3 + 1] = Math.round(s1.g + (s2.g - s1.g) * t)
+    palette[i * 3 + 2] = Math.round(s1.b + (s2.b - s1.b) * t)
+  }
+  return palette
+})()
+
+function getColor(value, maxValue) {
+  if (value <= 0) return null
+  // Use logarithmic scale for better distribution
+  const t = Math.log(1 + value) / Math.log(1 + maxValue)
+  const idx = Math.max(0, Math.min(255, Math.round(t * 255)))
+  const r = infernoPalette[idx * 3]
+  const g = infernoPalette[idx * 3 + 1]
+  const b = infernoPalette[idx * 3 + 2]
+  return { r, g, b }
+}
+
 // Layout Computed - Always auto-fit to container width
 const containerWidth = ref(0)
 
@@ -143,6 +183,12 @@ function render() {
     
   const len = Math.min(props.data.length, limit)
   
+  // Calculate max value for color scaling
+  let maxVal = 1
+  for (let i = 0; i < len; i++) {
+    if (props.data[i] > maxVal) maxVal = props.data[i]
+  }
+  
   for (let i = 0; i < len; i++) {
     let val = props.data[i]
     let heat = decayBuffer[i] || 0
@@ -162,15 +208,20 @@ function render() {
     const x = col * (size + gap)
     const y = row * (size + gap)
 
-    // Determine Color
-    // Heat makes it white/bright. Value makes it blue/colored.
+    // Determine Color using Inferno palette based on value
     if (val > 0) {
-      // Active hit
-      const lightness = 50 + (heat * 40) // 50% -> 90%
-      ctx.fillStyle = `hsl(210, 100%, ${lightness}%)`
-    } else {
-      // Decaying ghost
-      ctx.fillStyle = `hsla(210, 100%, 60%, ${heat})`
+      const color = getColor(val, maxVal)
+      if (color) {
+        // Apply heat glow effect - brighten color when recently changed
+        const brighten = heat * 60
+        const r = Math.min(255, color.r + brighten)
+        const g = Math.min(255, color.g + brighten)
+        const b = Math.min(255, color.b + brighten)
+        ctx.fillStyle = `rgb(${r},${g},${b})`
+      }
+    } else if (heat > 0) {
+      // Decaying ghost - fading out cell that was just cleared
+      ctx.fillStyle = `rgba(181, 54, 121, ${heat})`  // Magenta from inferno
     }
 
     ctx.fillRect(x, y, size, size)
