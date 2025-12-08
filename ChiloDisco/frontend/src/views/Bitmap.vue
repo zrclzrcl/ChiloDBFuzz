@@ -28,6 +28,7 @@
         <BitGrid 
           v-if="currentData.length" 
           :data="currentData" 
+          :layout="meta.layout"
           :type="currentType === 'bool' ? 'bool' : 'heat'" 
         />
         <div v-else class="empty-state">
@@ -50,7 +51,7 @@ const rawData = ref({
   cumulative: [],
   bool: []
 })
-const meta = ref({ mapSize: 0 })
+const meta = ref({ mapSize: 0, layout: { rows: 0, cols: 0 } })
 
 const currentData = computed(() => {
   return rawData.value[currentType.value] || []
@@ -63,7 +64,10 @@ async function fetchData() {
     const json = await res.json()
     if (json.ok) {
       rawData.value = json.channels
-      meta.value = { mapSize: json.mapSize }
+      meta.value = { 
+        mapSize: json.mapSize,
+        layout: json.layout || { rows: 0, cols: 0 }
+      }
     }
   } catch (e) {
     console.error('Fetch bitmap failed', e)
@@ -80,67 +84,69 @@ onMounted(fetchData)
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 24px;
-  gap: 24px;
+  padding: 1.5rem;
+  gap: 1.5rem;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--glass-border);
 }
 
 .title-group h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 1.5rem;
   font-weight: 600;
 }
 
 .subtitle {
-  color: var(--text-muted);
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
   margin-top: 4px;
   display: block;
 }
 
 .controls {
   display: flex;
-  gap: 12px;
+  gap: 1rem;
 }
 
 .btn-group {
   display: flex;
-  background: var(--bg-panel);
-  border-radius: var(--radius-sm);
-  padding: 4px;
-  border: 1px solid var(--border-color);
+  background: rgba(0,0,0,0.2);
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+  border: 1px solid var(--glass-border);
 }
 
 .btn-group button {
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  padding: 6px 16px;
-  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 0.875rem;
   font-weight: 500;
   transition: all 0.2s;
 }
 
 .btn-group button.active {
-  background: var(--bg-app);
-  color: var(--primary);
-  box-shadow: var(--shadow-sm);
+  background: rgba(255,255,255,0.1);
+  color: var(--accent-primary);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .btn-refresh {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--glass-border);
   color: var(--text-primary);
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-sm);
+  border-radius: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -149,8 +155,9 @@ onMounted(fetchData)
 }
 
 .btn-refresh:hover {
-  border-color: var(--primary);
-  color: var(--primary);
+  background: rgba(255,255,255,0.1);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .spinning {
@@ -165,11 +172,14 @@ onMounted(fetchData)
 }
 
 .grid-card {
-  background: var(--bg-panel-glass);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 0.75rem;
   height: 100%;
-  padding: 16px;
+  padding: 1rem;
   overflow: hidden;
 }
 
@@ -178,6 +188,6 @@ onMounted(fetchData)
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 </style>

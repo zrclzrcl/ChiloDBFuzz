@@ -267,12 +267,20 @@ def api_logs():
                 buckets[h].append(t)
             ts_list = []
             reused = 0
-            for h in cur_hashes:
+            for i, h in enumerate(cur_hashes):
                 if buckets[h]:
                     ts_list.append(buckets[h].popleft())
                     reused += 1
                 else:
-                    ts_list.append(now_iso)
+                    # 启发式：如果无法匹配历史，且该行不在末尾（例如前 80%），
+                    # 很有可能是因为窗口滑动而出现的旧行，不应赋予当前时间（导致发光）。
+                    # 只有末尾的新增行才应标记为 now。
+                    if cur_len > 10 and i < cur_len - 5:
+                        # 赋予一个旧时间（>90s），使其不发光
+                        old_t = (now_dt - timedelta(seconds=100)).isoformat()
+                        ts_list.append(old_t)
+                    else:
+                        ts_list.append(now_iso)
             # 如对齐效果极差（例如日志轮转/重写），避免“整体同色 now”，退回阶梯分配
             if cur_len > 0:
                 match_ratio = reused / float(cur_len)
@@ -639,16 +647,16 @@ def api_plot():
     return resp
 
 
-@app.route('/plot')
-def plot_page():
-    # 若存在前端工程构建产物（未来可将 plot 集成 SPA），此处仍回退到服务端模板页
-    return render_template('plot.html')
+# @app.route('/plot')
+# def plot_page():
+#     # 若存在前端工程构建产物（未来可将 plot 集成 SPA），此处仍回退到服务端模板页
+#     return render_template('plot.html')
 
 
 # —— 位图（Bitmap）热力图页面与 API ——
-@app.route('/bitmap')
-def bitmap_page():
-    return render_template('bitmap.html')
+# @app.route('/bitmap')
+# def bitmap_page():
+#     return render_template('bitmap.html')
 
 
 def _load_bitmap_dir() -> str:
@@ -808,11 +816,19 @@ def download_bitmap_all():
 # ————— 下载页面与下载 API —————
 @app.route('/downloads')
 def downloads_page():
+    # 优先尝试返回 Vue 前端
+    index_html = os.path.join(FRONTEND_DIST, 'index.html')
+    if os.path.exists(index_html):
+        return send_from_directory(FRONTEND_DIST, 'index.html')
     return render_template('downloads.html')
 
 
 @app.route('/settings')
 def settings_page():
+    # 优先尝试返回 Vue 前端
+    index_html = os.path.join(FRONTEND_DIST, 'index.html')
+    if os.path.exists(index_html):
+        return send_from_directory(FRONTEND_DIST, 'index.html')
     return render_template('settings.html')
 
 
@@ -851,6 +867,22 @@ def download_csv():
     if not p or not os.path.exists(p):
         return abort(404, description='CSV 文件不存在')
     return send_file(p, as_attachment=True, download_name=os.path.basename(p))
+
+
+@app.route('/api/download/log/list')
+def list_logs():
+    log_paths = load_log_paths()
+    items = []
+    for k, p in log_paths.items():
+        exists = os.path.exists(p)
+        items.append({
+            'key': k,
+            'path': p,
+            'exists': exists,
+            'size': os.path.getsize(p) if exists else 0,
+            'mtime': _file_mtime_iso(p) if exists else ''
+        })
+    return jsonify({'items': items})
 
 
 @app.route('/api/download/log')

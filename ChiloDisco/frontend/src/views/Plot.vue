@@ -13,45 +13,56 @@
     </header>
 
     <div class="dashboard-grid">
-      <!-- Main Line Chart -->
-      <div class="card chart-card">
-        <div class="card-header">实时趋势</div>
+      <!-- Left: Main Chart -->
+      <div class="card chart-section">
+        <div class="card-header">
+          <span>实时覆盖率趋势</span>
+        </div>
         <div class="chart-container" ref="lineChartEl"></div>
       </div>
 
-      <!-- Gauges -->
-      <div class="card gauge-card">
-        <div class="card-header">Pending Total</div>
-        <div class="chart-container" ref="gauge1El"></div>
-      </div>
-      <div class="card gauge-card">
-        <div class="card-header">Pending Favs</div>
-        <div class="chart-container" ref="gauge2El"></div>
-      </div>
-      <div class="card gauge-card">
-        <div class="card-header">Execs / Sec</div>
-        <div class="chart-container" ref="gauge3El"></div>
+      <!-- Right: Gauges Stack -->
+      <div class="gauges-section">
+        <div class="card gauge-card">
+          <div class="card-header">Pending Total</div>
+          <div class="gauge-container" ref="gauge1El"></div>
+        </div>
+        <div class="card gauge-card">
+          <div class="card-header">Pending Favs</div>
+          <div class="gauge-container" ref="gauge2El"></div>
+        </div>
+        <div class="card gauge-card">
+          <div class="card-header">Execs / Sec</div>
+          <div class="gauge-container" ref="gauge3El"></div>
+        </div>
       </div>
 
-      <!-- Stats -->
-      <div class="card stats-card">
-        <div class="card-header">核心指标</div>
+      <!-- Bottom: Stats -->
+      <div class="card stats-section">
         <div class="stats-grid">
-          <div class="stat-item">
-            <div class="label">Cycles</div>
+          <div class="stat-compact">
+            <div class="label">CYCLES DONE</div>
             <div class="value">{{ latest('cycles_done') }}</div>
           </div>
-          <div class="stat-item">
-            <div class="label">Crashes</div>
+          <div class="stat-compact">
+            <div class="label">SAVED CRASHES</div>
             <div class="value danger">{{ latest('saved_crashes') }}</div>
           </div>
-          <div class="stat-item">
-            <div class="label">Paths</div>
+          <div class="stat-compact">
+            <div class="label">SAVED HANGS</div>
+            <div class="value warning">{{ latest('saved_hangs') }}</div>
+          </div>
+          <div class="stat-compact">
+            <div class="label">CORPUS COUNT</div>
             <div class="value">{{ latest('corpus_count') }}</div>
           </div>
-          <div class="stat-item">
-            <div class="label">Total Execs</div>
-            <div class="value">{{ latest('total_execs') }}</div>
+          <div class="stat-compact">
+            <div class="label">TOTAL EXECS</div>
+            <div class="value primary">{{ latest('total_execs') }}</div>
+          </div>
+          <div class="stat-compact">
+            <div class="label">LAST UPDATE</div>
+            <div class="value muted">{{ formatTime(latest('last_update')) }}</div>
           </div>
         </div>
       </div>
@@ -79,6 +90,11 @@ function latest(key) {
   return arr[arr.length - 1]
 }
 
+function formatTime(ts) {
+  if (!ts || ts === '—') return '—'
+  return new Date(ts * 1000).toLocaleTimeString()
+}
+
 async function fetchData() {
   try {
     const r = await fetch('/api/plot?t=' + Date.now())
@@ -93,7 +109,6 @@ async function fetchData() {
 }
 
 function initCharts() {
-  // Theme colors
   const colorText = '#94a3b8'
   const colorSplit = 'rgba(148, 163, 184, 0.1)'
   
@@ -101,62 +116,69 @@ function initCharts() {
   const lineChart = echarts.init(lineChartEl.value)
   lineChart.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 50, right: 50, top: 40, bottom: 40, containLabel: true },
+    grid: { left: 50, right: 50, top: 40, bottom: 30, containLabel: true },
     tooltip: { trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: '#3b82f6', textStyle: { color: '#f1f5f9' } },
-    legend: { textStyle: { color: colorText }, bottom: 0 },
+    legend: { 
+      data: ['Map Size', 'Corpus', 'Crashes'],
+      textStyle: { color: colorText },
+      top: 0,
+      right: 10,
+      icon: 'circle'
+    },
     xAxis: { type: 'category', boundaryGap: false, axisLine: { lineStyle: { color: colorSplit } }, axisLabel: { color: colorText } },
     yAxis: [
-      { type: 'value', name: 'Coverage %', position: 'left', splitLine: { lineStyle: { color: colorSplit } }, axisLabel: { color: colorText } },
-      { type: 'value', name: 'Count', position: 'right', splitLine: { show: false }, axisLabel: { color: colorText } }
+      { type: 'value', position: 'left', splitLine: { lineStyle: { color: colorSplit } }, axisLabel: { color: colorText } },
+      { type: 'value', position: 'right', splitLine: { show: false }, axisLabel: { color: colorText } }
     ],
     series: []
   })
   charts.push(lineChart)
 
   // Gauges
-  const createGauge = (el, name, color) => {
+  const createGauge = (el, color) => {
     const chart = echarts.init(el)
     chart.setOption({
       series: [{
         type: 'gauge',
         startAngle: 180, endAngle: 0,
         min: 0, max: 100,
-        splitNumber: 5,
+        splitNumber: 1,
+        radius: '100%',
+        center: ['50%', '70%'],
         itemStyle: { color: color },
-        progress: { show: true, width: 18 },
+        progress: { show: true, width: 12 },
         pointer: { show: false },
-        axisLine: { lineStyle: { width: 18, color: [[1, '#1e293b']] } },
+        axisLine: { lineStyle: { width: 12, color: [[1, '#1e293b']] } },
         axisTick: { show: false },
         splitLine: { show: false },
         axisLabel: { show: false },
-        title: { show: false },
-        detail: { valueAnimation: true, offsetCenter: [0, '20%'], fontSize: 24, color: '#f1f5f9' }
+        detail: { valueAnimation: true, offsetCenter: [0, -10], fontSize: 20, color: '#f1f5f9', formatter: '{value}' }
       }]
     })
     charts.push(chart)
     return chart
   }
 
-  createGauge(gauge1El.value, 'Pending', '#3b82f6')
-  createGauge(gauge2El.value, 'Favs', '#8b5cf6')
-  createGauge(gauge3El.value, 'Execs', '#10b981')
+  createGauge(gauge1El.value, '#3b82f6')
+  createGauge(gauge2El.value, '#8b5cf6')
+  createGauge(gauge3El.value, '#10b981')
 }
 
 function updateCharts(s) {
   const t = s.t || []
   const mapSize = s.map_size || []
   const corpus = s.corpus_count || []
+  const crashes = s.saved_crashes || []
   
-  // Update Line
   charts[0].setOption({
     xAxis: { data: t },
     series: [
-      { name: 'Map Size', type: 'line', smooth: true, data: mapSize, yAxisIndex: 0, itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.2 } },
-      { name: 'Corpus', type: 'line', smooth: true, data: corpus, yAxisIndex: 1, itemStyle: { color: '#8b5cf6' }, areaStyle: { opacity: 0.2 } }
+      { name: 'Map Size', type: 'line', smooth: true, showSymbol: false, data: mapSize, yAxisIndex: 0, itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
+      { name: 'Corpus', type: 'line', smooth: true, showSymbol: false, data: corpus, yAxisIndex: 1, itemStyle: { color: '#8b5cf6' }, areaStyle: { opacity: 0.1 } },
+      { name: 'Crashes', type: 'line', smooth: true, showSymbol: false, data: crashes, yAxisIndex: 1, itemStyle: { color: '#ef4444' }, lineStyle: { width: 2, type: 'dashed' } }
     ]
   })
 
-  // Update Gauges
   const last = (k) => { const a = s[k]; return a && a.length ? a[a.length-1] : 0 }
   
   const pTotal = last('pending_total')
@@ -170,7 +192,6 @@ function updateCharts(s) {
 }
 
 function exportChart() {
-  // Simple export logic
   const url = charts[0].getDataURL({ type: 'png', backgroundColor: '#0f172a' })
   const a = document.createElement('a')
   a.href = url
@@ -201,8 +222,9 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 24px;
-  gap: 24px;
+  padding: 1.5rem;
+  gap: 1.5rem;
+  background: radial-gradient(circle at top right, #1e293b 0%, #0f172a 100%);
 }
 
 .page-header {
@@ -211,82 +233,126 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
-.page-header h1 { margin: 0; font-size: 24px; }
+.page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.5px; }
 
-.controls { display: flex; gap: 12px; }
-
+.controls { display: flex; gap: 1rem; }
 .select-control, .btn-action {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
   color: var(--text-primary);
-  padding: 6px 12px;
-  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
   cursor: pointer;
+  transition: all 0.2s;
+}
+.select-control:hover, .btn-action:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: var(--primary);
 }
 
 .dashboard-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  grid-template-rows: 2fr 1fr;
-  gap: 16px;
+  grid-template-columns: 3fr 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 1.5rem;
   min-height: 0;
 }
 
 .card {
-  background: var(--bg-panel-glass);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 1rem;
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 1.25rem;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
 }
 
 .card-header {
-  font-size: 14px;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  margin-bottom: 12px;
-  font-weight: 600;
+  margin-bottom: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  justify-content: space-between;
 }
 
-.chart-container {
+.chart-section {
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+}
+
+.gauges-section {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.gauge-card {
+  flex: 1;
+  min-height: 0;
+  padding: 1rem;
+}
+
+.gauge-container {
   flex: 1;
   min-height: 0;
 }
 
-.chart-card {
-  grid-column: 1 / 2;
-  grid-row: 1 / 3;
-}
-
-.stats-card {
-  grid-column: 2 / 4;
+.stats-section {
+  grid-column: 1 / 3;
   grid-row: 2 / 3;
+  height: auto;
+  padding: 1.5rem;
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  height: 100%;
-  align-items: center;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2rem;
 }
 
-.stat-item {
-  text-align: center;
+.stat-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
-.stat-item .label {
-  font-size: 12px;
+.stat-compact .label {
+  font-size: 0.7rem;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
-.stat-item .value {
-  font-size: 24px;
+.stat-compact .value {
+  font-size: 1.5rem;
   font-weight: 700;
-  font-family: var(--font-mono);
+  font-family: 'JetBrains Mono', monospace;
+  color: #f1f5f9;
 }
 
-.value.danger { color: var(--danger); }
+.value.danger { color: #ef4444; }
+.value.warning { color: #f59e0b; }
+.value.primary { color: #3b82f6; }
+.value.muted { color: #64748b; font-size: 1rem; }
+
+.legend-hint {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: normal;
+  text-transform: none;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.dot.blue { background: #3b82f6; }
+.dot.purple { background: #8b5cf6; }
+.dot.red { background: #ef4444; }
 </style>
