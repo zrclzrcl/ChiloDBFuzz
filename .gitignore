@@ -6,5 +6,10 @@ __pycache__/
 output/
 .vscode
 ChiloDisco/frontend/node_modules/
+ChiloDisco/frontend/dist/
+ChiloDisco/frontend/.DS_Store
+ChiloDisco/frontend/*.log
+ChiloDisco/frontend/.env.local
+ChiloDisco/frontend/.env*.local
 ChiloDisco/__pycache__
 crash_analysis.md
