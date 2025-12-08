@@ -207,20 +207,42 @@ function render() {
 
 function handleMouseMove(e) {
   const rect = canvas.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
+  const canvasX = e.clientX - rect.left
+  const canvasY = e.clientY - rect.top
   
   const size = cellSize.value + props.gap
   const c = cols.value
   
-  const col = Math.floor(x / size)
-  const row = Math.floor(y / size)
+  const col = Math.floor(canvasX / size)
+  const row = Math.floor(canvasY / size)
   const index = row * c + col
   
   if (index >= 0 && index < props.data.length) {
+    // Calculate tooltip position relative to container, not screen
+    // Position tooltip near the hovered cell, offset slightly
+    const cellX = col * size + size / 2
+    const cellY = row * size
+    
+    // Offset tooltip to the right and slightly below the cell
+    let tooltipX = cellX + 20
+    let tooltipY = cellY - 10
+    
+    // Ensure tooltip stays within canvas bounds
+    const containerRect = container.value?.getBoundingClientRect()
+    if (containerRect) {
+      // If tooltip would go off right edge, show on left side instead
+      if (tooltipX + 140 > containerRect.width) {
+        tooltipX = cellX - 150
+      }
+      // If tooltip would go above, show below
+      if (tooltipY < 0) {
+        tooltipY = cellY + size + 10
+      }
+    }
+    
     hoverInfo.value = {
-      x: e.clientX + 15,
-      y: e.clientY + 15,
+      x: tooltipX,
+      y: tooltipY,
       index,
       value: props.data[index],
       heat: decayBuffer[index] || 0
@@ -398,7 +420,7 @@ canvas {
 }
 
 .grid-tooltip {
-  position: fixed;
+  position: absolute;
   background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(8px);
   border: 1px solid var(--primary);

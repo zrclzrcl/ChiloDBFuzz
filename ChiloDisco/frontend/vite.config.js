@@ -23,27 +23,6 @@ export default defineConfig({
       '/favicon.ico': {
         target: 'http://127.0.0.1:5000',
         changeOrigin: true,
-      },
-      // 若后端已构建前端产物，也允许调试访问 /assets
-      '/assets': {
-        target: 'http://127.0.0.1:5000',
-        changeOrigin: true,
-      },
-      '/plot': {
-        target: 'http://127.0.0.1:5000',
-        changeOrigin: true,
-      },
-      '/downloads': {
-        target: 'http://127.0.0.1:5000',
-        changeOrigin: true,
-      },
-      '/bitmap': {
-        target: 'http://127.0.0.1:5000',
-        changeOrigin: true,
-      },
-      '/settings': {
-        target: 'http://127.0.0.1:5000',
-        changeOrigin: true,
       }
     }
   }
