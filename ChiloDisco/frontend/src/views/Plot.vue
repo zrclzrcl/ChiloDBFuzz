@@ -201,11 +201,11 @@ function initCharts() {
     }
   })
   
-  // Line Chart with neon style
+  // Line Chart with neon style - Each series has its own Y axis for better visibility
   const lineChart = echarts.init(lineChartEl.value, 'chiloNeon')
   lineChart.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 60, right: 60, top: 50, bottom: 60, containLabel: true },
+    grid: { left: 80, right: 120, top: 50, bottom: 60, containLabel: false },
     animation: true,
     animationDuration: 600,
     tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
@@ -225,8 +225,50 @@ function initCharts() {
       splitLine: { show: false }
     },
     yAxis: [
-      { type: 'value', name: '%', position: 'left', scale: true, axisLabel: { formatter: '{value}%', color: '#6b7280' }, splitLine: { lineStyle: { color: 'rgba(139,92,246,0.15)' } } },
-      { type: 'value', position: 'right', scale: true, axisLabel: { color: '#6b7280' }, splitLine: { show: false } }
+      { 
+        type: 'value', 
+        name: 'map%', 
+        nameTextStyle: { color: '#00f0ff', fontSize: 10 },
+        position: 'left', 
+        offset: 0,
+        scale: true, 
+        axisLabel: { formatter: '{value}%', color: '#00f0ff', fontSize: 10 }, 
+        axisLine: { show: true, lineStyle: { color: '#00f0ff' } },
+        splitLine: { show: false }
+      },
+      { 
+        type: 'value', 
+        name: 'edges', 
+        nameTextStyle: { color: '#8b5cf6', fontSize: 10 },
+        position: 'left', 
+        offset: 50,
+        scale: true, 
+        axisLabel: { color: '#8b5cf6', fontSize: 10 }, 
+        axisLine: { show: true, lineStyle: { color: '#8b5cf6' } },
+        splitLine: { show: false }
+      },
+      { 
+        type: 'value', 
+        name: 'corpus', 
+        nameTextStyle: { color: '#ff006e', fontSize: 10 },
+        position: 'right', 
+        offset: 0,
+        scale: true, 
+        axisLabel: { color: '#ff006e', fontSize: 10 }, 
+        axisLine: { show: true, lineStyle: { color: '#ff006e' } },
+        splitLine: { show: false }
+      },
+      { 
+        type: 'value', 
+        name: 'crashes', 
+        nameTextStyle: { color: '#ffed4e', fontSize: 10 },
+        position: 'right', 
+        offset: 50,
+        scale: true, 
+        axisLabel: { color: '#ffed4e', fontSize: 10 }, 
+        axisLine: { show: true, lineStyle: { color: '#ffed4e' } },
+        splitLine: { show: false }
+      }
     ],
     series: []
   })
@@ -270,7 +312,7 @@ function updateCharts(s) {
   const corpus = s.corpus_count || []
   const crashes = s.saved_crashes || []
   
-  // Update line chart with neon gradient areas
+  // Update line chart with neon gradient areas - each series uses its own Y axis
   charts[0].setOption({
     xAxis: { data: t },
     series: [
@@ -303,7 +345,7 @@ function updateCharts(s) {
       { 
         name: 'corpus_count', type: 'line', smooth: true, showSymbol: false, 
         data: t.map((ti, i) => [ti, corpus[i]]),
-        yAxisIndex: 1,
+        yAxisIndex: 2,
         lineStyle: { color: '#ff006e', width: 3 },
         areaStyle: { 
           opacity: 0.25,
@@ -316,7 +358,7 @@ function updateCharts(s) {
       { 
         name: 'saved_crashes', type: 'line', smooth: true, showSymbol: false, 
         data: t.map((ti, i) => [ti, crashes[i]]),
-        yAxisIndex: 1,
+        yAxisIndex: 3,
         lineStyle: { color: '#ffed4e', width: 3 },
         areaStyle: { 
           opacity: 0.25,
