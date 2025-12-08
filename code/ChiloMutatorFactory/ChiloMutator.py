@@ -101,19 +101,17 @@ class ChiloMutatorPool:
             sample_val = random.betavariate(mutator.alpha, mutator.beta)
             
             # 2. 计算历史因子 (Bi)
-            # Bi = log(t/N + 1) / log((su + fa)/(ne + 1) + 1)
+            # Bi = log(t/N + 1) * log((ne + 1)/(su + fa + 1) + 1)
+            # 含义：时间压力 × 效率（每次选择能发现多少新边）
+            # 效率高的变异器 Bi 大，效率低的 Bi 小
             su = mutator.success_count
             fa = mutator.failure_count
             ne = mutator.total_new_edges
             
-            numerator = math.log(t / N + 1)
-            denominator = math.log((su + fa) / (ne + 1) + 1)
+            time_pressure = math.log(t / N + 1)
+            efficiency = math.log((ne + 1) / (su + fa + 1) + 1)
             
-            # 防止分母为0 (虽然公式里+1了应该不会,但浮点数保险起见)
-            if denominator < 1e-9:
-                denominator = 1e-9
-                
-            Bi = numerator / denominator
+            Bi = time_pressure * efficiency
             
             # 3. 计算潜力因子 (Ci)
             # Ci = log((mask_i * (1 - sim_i)) / avg_mask + 1)

@@ -205,12 +205,17 @@ function initCharts() {
   const lineChart = echarts.init(lineChartEl.value, 'chiloNeon')
   lineChart.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 80, right: 120, top: 50, bottom: 60, containLabel: false },
+    grid: { left: 80, right: 120, top: 60, bottom: 60, containLabel: false },
     animation: true,
     animationDuration: 600,
     tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
     legend: { 
-      data: ['map_size(%)', 'edges_found', 'corpus_count', 'saved_crashes'],
+      data: [
+        { name: 'map_size(%)', itemStyle: { color: '#00f0ff' } },
+        { name: 'edges_found', itemStyle: { color: '#8b5cf6' } },
+        { name: 'corpus_count', itemStyle: { color: '#ff006e' } },
+        { name: 'saved_crashes', itemStyle: { color: '#ffed4e' } }
+      ],
       textStyle: { color: colorText, fontSize: 12 },
       bottom: 10,
       icon: 'circle'
@@ -231,7 +236,8 @@ function initCharts() {
         nameTextStyle: { color: '#00f0ff', fontSize: 10 },
         position: 'left', 
         offset: 0,
-        scale: true, 
+        scale: true,
+        boundaryGap: ['5%', '10%'],
         axisLabel: { formatter: '{value}%', color: '#00f0ff', fontSize: 10 }, 
         axisLine: { show: true, lineStyle: { color: '#00f0ff' } },
         splitLine: { show: false }
@@ -242,7 +248,8 @@ function initCharts() {
         nameTextStyle: { color: '#8b5cf6', fontSize: 10 },
         position: 'left', 
         offset: 50,
-        scale: true, 
+        scale: true,
+        boundaryGap: ['5%', '10%'],
         axisLabel: { color: '#8b5cf6', fontSize: 10 }, 
         axisLine: { show: true, lineStyle: { color: '#8b5cf6' } },
         splitLine: { show: false }
@@ -253,7 +260,8 @@ function initCharts() {
         nameTextStyle: { color: '#ff006e', fontSize: 10 },
         position: 'right', 
         offset: 0,
-        scale: true, 
+        scale: true,
+        boundaryGap: ['5%', '10%'],
         axisLabel: { color: '#ff006e', fontSize: 10 }, 
         axisLine: { show: true, lineStyle: { color: '#ff006e' } },
         splitLine: { show: false }
@@ -264,7 +272,8 @@ function initCharts() {
         nameTextStyle: { color: '#ffed4e', fontSize: 10 },
         position: 'right', 
         offset: 50,
-        scale: true, 
+        scale: true,
+        boundaryGap: ['5%', '10%'],
         axisLabel: { color: '#ffed4e', fontSize: 10 }, 
         axisLine: { show: true, lineStyle: { color: '#ffed4e' } },
         splitLine: { show: false }
@@ -482,6 +491,11 @@ onBeforeUnmount(() => {
 .select-control:hover, .btn-action:hover {
   background: rgba(255,255,255,0.1);
   border-color: #00f0ff;
+}
+.select-control option {
+  background: #1e293b;
+  color: #e0e7ff;
+  padding: 0.5rem;
 }
 
 .dashboard-grid {

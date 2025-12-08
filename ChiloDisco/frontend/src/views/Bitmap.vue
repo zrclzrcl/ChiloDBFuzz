@@ -17,6 +17,14 @@
             {{ t.toUpperCase() }}
           </button>
         </div>
+        <button 
+          class="btn-auto" 
+          :class="{ active: autoRefresh }"
+          @click="toggleAutoRefresh"
+          title="自动刷新"
+        >
+          ⚡ {{ autoRefresh ? 'ON' : 'OFF' }}
+        </button>
         <button class="btn-refresh" @click="fetchData" :disabled="loading">
           <RefreshCw :class="{ spinning: loading }" />
         </button>
@@ -40,12 +48,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import BitGrid from '../components/BitGrid.vue'
 
 const currentType = ref('sum')
 const loading = ref(false)
+const autoRefresh = ref(true)
+const refreshInterval = ref(2000)
+let timer = null
+
 const rawData = ref({
   sum: [],
   cumulative: [],
@@ -76,7 +88,26 @@ async function fetchData() {
   }
 }
 
-onMounted(fetchData)
+function startAutoRefresh() {
+  if (timer) clearInterval(timer)
+  if (autoRefresh.value) {
+    timer = setInterval(fetchData, refreshInterval.value)
+  }
+}
+
+function toggleAutoRefresh() {
+  autoRefresh.value = !autoRefresh.value
+  startAutoRefresh()
+}
+
+onMounted(() => {
+  fetchData()
+  startAutoRefresh()
+})
+
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <style scoped>
@@ -158,6 +189,23 @@ onMounted(fetchData)
   background: rgba(255,255,255,0.1);
   border-color: var(--accent-primary);
   color: var(--accent-primary);
+}
+
+.btn-auto {
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-auto.active {
+  background: rgba(0, 255, 159, 0.15);
+  border-color: rgba(0, 255, 159, 0.4);
+  color: #00ff9f;
 }
 
 .spinning {

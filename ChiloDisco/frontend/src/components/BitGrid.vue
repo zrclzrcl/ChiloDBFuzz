@@ -227,21 +227,22 @@ function render() {
     ctx.fillRect(x, y, size, size)
   }
 
-  // 3. Draw Ripples
-  ctx.lineWidth = 2
+  // 3. Draw Ripples (smaller and fewer)
+  ctx.lineWidth = 1
   for (let i = ripples.length - 1; i >= 0; i--) {
-    const r = ripples[i]
-    r.r += 1.0 // Expand speed
-    r.age -= 0.02 // Fade speed
+    const rp = ripples[i]
+    rp.r += 0.6 // Slower expand speed
+    rp.age -= 0.03 // Faster fade speed
 
-    if (r.age <= 0) {
+    const maxR = rp.maxR || 20
+    if (rp.age <= 0 || rp.r > maxR) {
       ripples.splice(i, 1)
       continue
     }
 
     ctx.beginPath()
-    ctx.strokeStyle = `rgba(255, 255, 255, ${r.age})`
-    ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2)
+    ctx.strokeStyle = `rgba(255, 255, 255, ${rp.age * 0.5})`
+    ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2)
     ctx.stroke()
   }
 
@@ -373,15 +374,15 @@ watch(() => props.data, (newVal) => {
       changed = true
       
       // Spawn ripple if it's a "new" bit (0->nonzero) or large change
-      if ((old === 0 && v > 0) || deltaMag >= 5) {
-        if (Math.random() > 0.85) { // Limit ripples to avoid chaos
+      if ((old === 0 && v > 0) || deltaMag >= 10) {
+        if (Math.random() > 0.96) { // Greatly limit ripples to avoid chaos
           const c = cols.value
           const col = i % c
           const row = Math.floor(i / c)
           const x = col * (cellSize.value + props.gap) + cellSize.value/2
           const y = row * (cellSize.value + props.gap) + cellSize.value/2
           
-          ripples.push({ x, y, r: 0, age: 1.0 })
+          ripples.push({ x, y, r: 0, age: 0.6, maxR: 15 }) // Smaller ripple with max radius
         }
       }
     }
