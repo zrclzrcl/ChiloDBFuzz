@@ -117,6 +117,20 @@ const meta = ref({})
 const curInput = ref({ content: '', meta: {}, since_sec: 0 })
 let timer = null
 
+// 读取设置
+const chartTopPadding = ref(true)
+function loadSettings() {
+  try {
+    const saved = localStorage.getItem('chilo_settings')
+    if (saved) {
+      const settings = JSON.parse(saved)
+      chartTopPadding.value = settings.chartTopPadding !== false // 默认为true
+    }
+  } catch (e) {
+    console.error('Failed to load settings', e)
+  }
+}
+
 function latest(key) {
   const arr = dataSeries.value[key]
   if (!arr || !arr.length) return '—'
@@ -203,9 +217,10 @@ function initCharts() {
   
   // Line Chart with neon style - Each series has its own Y axis for better visibility
   const lineChart = echarts.init(lineChartEl.value, 'chiloNeon')
+  const yAxisPadding = chartTopPadding.value ? ['5%', '10%'] : [0, 0]
   lineChart.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 80, right: 120, top: 60, bottom: 60, containLabel: false },
+    grid: { left: 80, right: 120, top: chartTopPadding.value ? 60 : 50, bottom: 60, containLabel: false },
     animation: true,
     animationDuration: 600,
     tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
@@ -237,7 +252,7 @@ function initCharts() {
         position: 'left', 
         offset: 0,
         scale: true,
-        boundaryGap: ['5%', '10%'],
+        boundaryGap: yAxisPadding,
         axisLabel: { formatter: '{value}%', color: '#00f0ff', fontSize: 10 }, 
         axisLine: { show: true, lineStyle: { color: '#00f0ff' } },
         splitLine: { show: false }
@@ -249,7 +264,7 @@ function initCharts() {
         position: 'left', 
         offset: 50,
         scale: true,
-        boundaryGap: ['5%', '10%'],
+        boundaryGap: yAxisPadding,
         axisLabel: { color: '#8b5cf6', fontSize: 10 }, 
         axisLine: { show: true, lineStyle: { color: '#8b5cf6' } },
         splitLine: { show: false }
@@ -261,7 +276,7 @@ function initCharts() {
         position: 'right', 
         offset: 0,
         scale: true,
-        boundaryGap: ['5%', '10%'],
+        boundaryGap: yAxisPadding,
         axisLabel: { color: '#ff006e', fontSize: 10 }, 
         axisLine: { show: true, lineStyle: { color: '#ff006e' } },
         splitLine: { show: false }
@@ -273,7 +288,7 @@ function initCharts() {
         position: 'right', 
         offset: 50,
         scale: true,
-        boundaryGap: ['5%', '10%'],
+        boundaryGap: yAxisPadding,
         axisLabel: { color: '#ffed4e', fontSize: 10 }, 
         axisLine: { show: true, lineStyle: { color: '#ffed4e' } },
         splitLine: { show: false }
@@ -442,15 +457,32 @@ watch(interval, () => {
 })
 
 onMounted(() => {
+  loadSettings()
   initCharts()
   fetchData()
   timer = setInterval(fetchData, interval.value)
   window.addEventListener('resize', resize)
+  window.addEventListener('settings-changed', onSettingsChanged)
 })
+
+function onSettingsChanged() {
+  const oldValue = chartTopPadding.value
+  loadSettings()
+  // 如果设置改变了，重新初始化图表
+  if (oldValue !== chartTopPadding.value) {
+    charts.forEach(c => c.dispose())
+    charts.length = 0
+    initCharts()
+    if (Object.keys(dataSeries.value).length > 0) {
+      updateCharts(dataSeries.value)
+    }
+  }
+}
 
 onBeforeUnmount(() => {
   clearInterval(timer)
   window.removeEventListener('resize', resize)
+  window.removeEventListener('settings-changed', onSettingsChanged)
   charts.forEach(c => c.dispose())
 })
 </script>

@@ -42,6 +42,16 @@
               <span class="slider"></span>
             </label>
           </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label>折线图顶部留白</label>
+              <span class="desc">在折线图顶部留出空间，避免数据点贴边</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" v-model="settings.chartTopPadding" @change="saveSettings">
+              <span class="slider"></span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -124,7 +134,8 @@ const defaultSettings = {
   particles: true,
   glow: true,
   fps: false,
-  memory: false
+  memory: false,
+  chartTopPadding: true
 }
 
 const settings = reactive({ ...defaultSettings })

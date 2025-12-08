@@ -139,6 +139,8 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
         semantic_up_token_all = 0
         semantic_down_token_all = 0
         at_last_is_all_correct = True
+        unique_count = 0  # 用于重复率计算
+        total_count = 0   # 用于重复率计算
         my_chilo_factory.mutator_fixer_logger.info(f"[线程{thread_id}]等待接收变异器修复任务")
         need_fix = my_chilo_factory.fix_mutator_list.get()  #先从队列中取一个用来修复
         fix_seed_id = need_fix["seed_id"]

@@ -103,9 +103,15 @@ class ChiloFactory:
         # 错误重试配置
         self.llm_format_error_max_retry = config['OTHERS'].get('LLM_FORMAT_ERROR_MAX_RETRY', 5)
         self.syntax_error_max_retry = config['OTHERS'].get('SYNTAX_ERROR_MAX_RETRY', 5)
-        self.max_energy = config['OTHERS']['MAX_ENERGY']    #变异器最大能量
-        self.min_energy = config['OTHERS']['MIN_ENERGY']    #变异器最小能量
-        self.energy_exchange_rate = config['OTHERS']['ENERGY_EXCHANGE_RATE']    #能量兑换率
+        
+        # 能量调度配置
+        energy_config = config.get('ENERGY', {})
+        self.enable_energy_schedule = energy_config.get('ENABLE_ENERGY_SCHEDULE', True)  # 是否启用能量调度
+        self.max_energy = energy_config.get('MAX_ENERGY', 200)    # 变异器最大能量
+        self.min_energy = energy_config.get('MIN_ENERGY', 5)      # 变异器最小能量
+        self.energy_exchange_rate = energy_config.get('ENERGY_EXCHANGE_RATE', 1)  # 能量兑换率
+        self.random_energy_min = energy_config.get('RANDOM_ENERGY_MIN', 50)  # 随机能量最小值
+        self.random_energy_max = energy_config.get('RANDOM_ENERGY_MAX', 200)  # 随机能量最大值
 
         #下面是CSV文件
         self.mutator_fixer_csv_path = config['CSV']['MUTATOR_FIXER_CSV_PATH']

@@ -108,23 +108,43 @@ def fuzz_count(buf):
             #说明并非刚启动，变异器池已经有东西了
             chilo_factory.next_fuzz_strategy = 2
             
-            # 汤普森采样选择变异器
-            with chilo_factory.mutator_pool_lock:
-                mutator, score, Ai, Bi, Ci = chilo_factory.mutator_pool.thompson_select_mutator()
-            
-            chilo_factory.mutator_pool.total_select_count += 1 # 增加总选择次数
-            chilo_factory.current_thompson_mutator = mutator
-            chilo_factory.current_thompson_score = score
-            chilo_factory.current_Ai = Ai
-            chilo_factory.current_Bi = Bi
-            chilo_factory.current_Ci = Ci
-            chilo_factory.current_batch_new_edges = 0 # 重置当前批次的新边计数
-            
-            # 能量调度：max(int(score * 10), 5)，且设置上限200
-            energy = min(max(int(score * chilo_factory.energy_exchange_rate), chilo_factory.min_energy), chilo_factory.max_energy)
+            if chilo_factory.enable_energy_schedule:
+                # 启用能量调度：使用汤普森采样选择变异器
+                with chilo_factory.mutator_pool_lock:
+                    mutator, score, Ai, Bi, Ci = chilo_factory.mutator_pool.thompson_select_mutator()
+                
+                chilo_factory.mutator_pool.total_select_count += 1 # 增加总选择次数
+                chilo_factory.current_thompson_mutator = mutator
+                chilo_factory.current_thompson_score = score
+                chilo_factory.current_Ai = Ai
+                chilo_factory.current_Bi = Bi
+                chilo_factory.current_Ci = Ci
+                chilo_factory.current_batch_new_edges = 0 # 重置当前批次的新边计数
+                
+                # 能量调度：基于得分计算能量
+                energy = min(max(int(score * chilo_factory.energy_exchange_rate), chilo_factory.min_energy), chilo_factory.max_energy)
+                
+                chilo_factory.main_logger.info(f"[能量调度] 汤普森采样选中变异器: {mutator.mutator_id}, 得分: {score:.4f}, 能量: {energy}")
+            else:
+                # 禁用能量调度：随机选择变异器，随机能量
+                import random as rnd
+                with chilo_factory.mutator_pool_lock:
+                    mutator = chilo_factory.mutator_pool.random_select_mutator()
+                
+                chilo_factory.mutator_pool.total_select_count += 1 # 增加总选择次数
+                chilo_factory.current_thompson_mutator = mutator
+                chilo_factory.current_thompson_score = 0.0  # 随机模式无得分
+                chilo_factory.current_Ai = 0.0
+                chilo_factory.current_Bi = 0.0
+                chilo_factory.current_Ci = 0.0
+                chilo_factory.current_batch_new_edges = 0 # 重置当前批次的新边计数
+                
+                # 随机能量
+                energy = rnd.randint(chilo_factory.random_energy_min, chilo_factory.random_energy_max)
+                
+                chilo_factory.main_logger.info(f"[随机选择] 随机选中变异器: {mutator.mutator_id}, 随机能量: {energy}")
             
             chilo_factory.main_logger.info(f"无待第一次执行的变异器，将执行变异器池选择，变异次数{energy}")
-            chilo_factory.main_logger.info(f"汤普森采样选中变异器: {mutator.mutator_id}, 得分: {score}, 能量: {energy}")
             
             #注意，这里就不能再返回mutatetime了，而是在这里确定变异次数和能量调度
             left_fuzz_count = energy
