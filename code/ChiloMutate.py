@@ -3,7 +3,7 @@ import time
 from ChiloMutatorFactory import chilo_factory as cf
 import threading
 from ChiloMutatorFactory import LLMParser,LLMMutatorGenerater,LLMStructuralMutator,mutator_fixer
-
+import random as rnd
 
 chilo_factory: cf.ChiloFactory | None = None
 fuzz_count_number = 0
@@ -96,6 +96,10 @@ def fuzz_count(buf):
             chilo_factory.next_fuzz_strategy = 0
             chilo_factory.main_logger.info("有结构化变异待执行，将执行结构化变异，变异次数1")
             left_fuzz_count = 1
+            chilo_factory.current_thompson_score = -1
+            chilo_factory.current_Ai = -1
+            chilo_factory.current_Bi = -1
+            chilo_factory.current_Ci = -1
             return 1
 
     # 否则：根据 wait_exec_mutator_list 前缀中连续同一对象实例的个数返回
@@ -127,7 +131,6 @@ def fuzz_count(buf):
                 chilo_factory.main_logger.info(f"[能量调度] 汤普森采样选中变异器: {mutator.mutator_id}, 得分: {score:.4f}, 能量: {energy}")
             else:
                 # 禁用能量调度：随机选择变异器，随机能量
-                import random as rnd
                 with chilo_factory.mutator_pool_lock:
                     mutator = chilo_factory.mutator_pool.random_select_mutator()
                 
@@ -153,7 +156,8 @@ def fuzz_count(buf):
         else:
             #说明刚启动，需要让mutate_once等一等
             chilo_factory.next_fuzz_strategy = 0
-            chilo_factory.main_logger.info("chilo刚启动，再等一等")
+            if chilo_factory.parser_thread_count > 0:
+                chilo_factory.main_logger.info("chilo刚启动，再等一等")
             left_fuzz_count = 0
             return 0    #AFL++暂时跳过，等待一下... 
     first_item = internal[0]

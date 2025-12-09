@@ -71,7 +71,7 @@ class ChiloFactory:
         self.wait_parse_list = queue.Queue()   #等待SQL解析的队列
         self.wait_mutator_generate_list = queue.Queue(maxsize=self.mutator_generator_queue_max_size)    #等待变异器生成的队列
         self.wait_exec_mutator_list = queue.Queue() #等待执行的队列
-        self.structural_mutator_list = queue.Queue()    #等待结构性变异的队列
+        self.structural_mutator_list = queue.LifoQueue()    #等待结构性变异的栈（后进先出，优先处理最新种子）
         # 变异器修复队列使用有界队列，便于在上游进行背压判断
         self.fix_mutator_queue_max_size = config['OTHERS']['FIX_MUTATOR_QUEUE_MAX_SIZE']
         self.fix_mutator_list = queue.Queue(maxsize=self.fix_mutator_queue_max_size)   #等待修复队列
