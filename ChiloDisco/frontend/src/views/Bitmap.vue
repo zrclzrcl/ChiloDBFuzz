@@ -54,8 +54,12 @@ import BitGrid from '../components/BitGrid.vue'
 
 const currentType = ref('sum')
 const loading = ref(false)
-const autoRefresh = ref(true)
-const refreshInterval = ref(2000)
+
+// 从localStorage读取保存的设置
+const savedAutoRefresh = localStorage.getItem('cd_bitmap_autoRefresh')
+const savedRefreshInterval = localStorage.getItem('cd_bitmap_refreshInterval')
+const autoRefresh = ref(savedAutoRefresh !== null ? savedAutoRefresh === 'true' : true)
+const refreshInterval = ref(savedRefreshInterval ? parseInt(savedRefreshInterval, 10) : 2000)
 let timer = null
 
 const rawData = ref({
@@ -97,6 +101,7 @@ function startAutoRefresh() {
 
 function toggleAutoRefresh() {
   autoRefresh.value = !autoRefresh.value
+  localStorage.setItem('cd_bitmap_autoRefresh', autoRefresh.value.toString())
   startAutoRefresh()
 }
 

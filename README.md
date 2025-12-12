@@ -52,7 +52,7 @@ docker build -t clccdbfuzz:sqlite -f clcc_dockerfile .
 SQLite (SQUIRREL/CHILO):
 ```bash
 #下面语句请在主机终端1运行
-docker run -it --privileged -p 5173:5173 --name sqlite_chilofuzz_test chilodbfuzz:sqlite /bin/bash
+docker run -it --cpuset-cpus="0,1" --privileged -p 5173:5173 --name sqlite_chilofuzz_test chilodbfuzz:sqlite /bin/bash
 
 # 请首先编写config.yaml以及fuzz_config.yaml
 vim ./config.yaml

@@ -231,21 +231,35 @@ function highlightSearch(text, query) {
 }
 
 function parseLineAgeSecFromContent(line, now){
-  const m = line.match(tsRegex);
-  if (!m) return null;
-  for (const t of m){
+  // 创建新的正则表达式实例，避免全局正则的lastIndex状态问题
+  const localTsRegex = /(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?\b)|(\b\d{2}:\d{2}:\d{2}\b)/g;
+  const matches = line.match(localTsRegex);
+  if (!matches || matches.length === 0) return null;
+  
+  for (const t of matches){
     let d = null;
+    // 只有时间的格式 (HH:MM:SS)
     if (/^\d{2}:\d{2}:\d{2}$/.test(t)){
       const today = new Date(now);
       const y = today.getFullYear();
       const mo = String(today.getMonth()+1).padStart(2,'0');
       const da = String(today.getDate()).padStart(2,'0');
       d = new Date(`${y}-${mo}-${da}T${t}`);
-    }else{
-      d = new Date(t.replace(' ', 'T'));
+      // 如果时间比当前时间晚，说明跨天了，往前推一天
+      if (d > now) {
+        d = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+      }
+    } else {
+      // 完整日期时间格式
+      const normalized = t.replace(' ', 'T').replace(/\//g, '-');
+      d = new Date(normalized);
     }
-    if (!isNaN(d)){
-      return Math.max(0, (now - d)/1000.0);
+    if (d && !isNaN(d.getTime())){
+      const ageSec = (now - d) / 1000.0;
+      // 只返回合理范围的时间（不超过24小时）
+      if (ageSec >= 0 && ageSec < 86400) {
+        return ageSec;
+      }
     }
   }
   return null;
@@ -283,7 +297,9 @@ function colorizeLineObj(lineObj, fallbackHue, now, searchQ = '') {
     escaped = highlightSearch(escaped, searchQ);
   }
   
-  const withTs = escaped.replace(tsRegex, (m) => `<span class="timestamp" style="color:${color}; text-shadow:${shadow}">${m}</span>`);
+  // 使用新的正则实例避免全局状态问题
+  const highlightTsRegex = /(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?\b)|(\b\d{2}:\d{2}:\d{2}\b)/g;
+  const withTs = escaped.replace(highlightTsRegex, (m) => `<span class="timestamp" style="color:${color}; text-shadow:${shadow}">${m}</span>`);
   return `<span style="color:${color}; text-shadow:${shadow}">${withTs}</span>`;
 }
 

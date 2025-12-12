@@ -23,7 +23,7 @@ Generate SQL mutations that:
 
 ## 📋 Input Mask Types
 
-The input SQL contains 4 types of masks:
+The input SQL contains **6 types** of masks:
 
 ### 1. CONSTANT
 Format: `[CONSTANT, number:X, type:<type>, ori:<value>]`
@@ -37,89 +37,145 @@ Format: `[CONSTANT, number:X, type:<type>, ori:<value>]`
   - Strings: '', 'a'*10000, special chars (NULL byte, unicode edges)
   - Blobs: x'', x'00', x'FF', randomblob(1000000)
 - **Special values**: NULL
-- **AFL-style mutations**: 
-  - Bit flip on original value
-  - Byte arithmetic (+1, -1, +128, -128)
-  - Integer interesting values (see AFL)
+- **AFL-style mutations**: bit flip, byte arithmetic, interesting values
 
 ### 2. OPERATOR
 Format: `[OPERATOR, number:X, category:<category>, ori:<op>]`
 
 **Mutation Strategy**:
-- **Semantic substitution**: Replace with operators from the same category
+- **Same-category substitution**:
   - Arithmetic: +, -, *, /, %
   - Comparison: >, <, >=, <=, =, !=, <>, IS, IS NOT
   - Logical: AND, OR
   - Bitwise: &, |, <<, >>
-- **Cross-category**: Occasionally try operators from different categories (may cause errors, which is valuable for testing)
+  - String: ||, LIKE, GLOB, MATCH
+- **Cross-category** (10% chance): Try incompatible operators
 
 ### 3. FUNCTION
-Format: `[FUNCTION, number:X, category:<category>, ori:<func>]`
+Format: `[FUNCTION, number:X, category:<category>, argc:<arg_count>, ori:<func>]`
 
-**Mutation Strategy**:
-- **Same-category substitution**: Replace with functions from the same category
-  - Aggregate: SUM → AVG, COUNT, MAX, MIN, TOTAL, GROUP_CONCAT
-  - Scalar numeric: ABS → ROUND, CEILING, FLOOR, SIGN, SQRT
-  - Scalar string: UPPER → LOWER, LENGTH, TRIM, SUBSTR, REPLACE
-  - Datetime: datetime → date, time, julianday, strftime
-- **Cross-category** (advanced): Try incompatible functions to trigger type errors
-  - Example: SUM → UPPER (aggregate → string function)
+**Mutation Strategy** (MUST match argc):
+- **argc:1 aggregates**: SUM, AVG, COUNT, MAX, MIN, TOTAL
+- **argc:1 scalars**: ABS, UPPER, LOWER, LENGTH, TYPEOF, QUOTE, HEX, ZEROBLOB, RANDOMBLOB
+- **argc:2 scalars**: SUBSTR, INSTR, NULLIF, IFNULL, COALESCE, PRINTF
+- **argc:3 scalars**: SUBSTR, REPLACE, IIF
+- **Cross-category** (5% chance): Try incompatible function (may crash)
+
+**IMPORTANT**: Only substitute with functions that have the SAME argc!
 
 ### 4. KEYWORD
 Format: `[KEYWORD, number:X, context:<context>, ori:<keyword_phrase>]`
 
 **Mutation Strategy** (context-specific):
 
-- **constraint**: NOT NULL ↔ UNIQUE ↔ PRIMARY KEY ↔ <empty>
-- **conflict**: OR REPLACE ↔ OR IGNORE ↔ OR FAIL ↔ OR ABORT ↔ OR ROLLBACK ↔ <empty>
-- **modifier**: DISTINCT ↔ ALL ↔ <empty>
-- **join**: INNER ↔ LEFT ↔ CROSS ↔ <comma>
-- **order**: ASC ↔ DESC
-- **existence_check**: IF EXISTS ↔ IF NOT EXISTS ↔ <empty>
+| context | Candidates |
+|---------|-----------|
+| constraint | NOT NULL, UNIQUE, PRIMARY KEY, CHECK(1), <empty> |
+| conflict | OR REPLACE, OR IGNORE, OR FAIL, OR ABORT, OR ROLLBACK, <empty> |
+| modifier | DISTINCT, ALL, <empty> |
+| join | INNER, LEFT, LEFT OUTER, CROSS, NATURAL, <comma> |
+| order | ASC, DESC |
+| nulls | NULLS FIRST, NULLS LAST, <empty> |
+| existence | IF EXISTS, IF NOT EXISTS, <empty> |
+| temp | TEMPORARY, TEMP, <empty> |
+| transaction | DEFERRED, IMMEDIATE, EXCLUSIVE |
+| fk_action | CASCADE, SET NULL, SET DEFAULT, RESTRICT, NO ACTION |
+
+### 5. FRAME (NEW - HIGH CRASH POTENTIAL)
+Format: `[FRAME, number:X, ori:<frame_clause>]`
+
+**Mutation Strategy** - Window frame bugs are common crash sources:
+- **Standard frames**:
+  - `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`
+  - `ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING`
+  - `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`
+- **Crash-inducing frames** (target overflow/underflow):
+  - `ROWS BETWEEN 9223372036854775807 PRECEDING AND 9223372036854775807 FOLLOWING`
+  - `ROWS BETWEEN -1 PRECEDING AND 1 FOLLOWING` (negative!)
+  - `ROWS BETWEEN 1 PRECEDING AND -1 FOLLOWING` (invalid range!)
+  - `GROUPS BETWEEN 999999999 PRECEDING AND 999999999 FOLLOWING`
+  - `RANGE BETWEEN 1e308 PRECEDING AND 1e308 FOLLOWING` (extreme float)
+- **Edge cases**:
+  - `ROWS 0 PRECEDING` (minimal)
+  - `ROWS BETWEEN 0 PRECEDING AND 0 FOLLOWING` (single row)
+
+### 6. CAST_TYPE (NEW - HIGH CRASH POTENTIAL)
+Format: `[CAST_TYPE, number:X, ori:<type_name>]`
+
+**Mutation Strategy** - Type conversion bugs are very common:
+- **Standard types**: INTEGER, REAL, TEXT, BLOB, NUMERIC
+- **Overflow types**: 
+  - `UNSIGNED BIG INT` (can overflow)
+  - `BIGINT` 
+  - `DOUBLE PRECISION`
+- **Edge types**:
+  - `BOOLEAN` (not all DBs support)
+  - `CLOB`, `NCHAR`, `NVARCHAR` (encoding issues)
+  - `DECIMAL(1000,500)` (extreme precision)
+- **Invalid types** (may crash parser):
+  - Empty string (just remove the type)
+  - Very long type name: 'A' * 1000
 
 ---
 
-## 🧬 Advanced Mutation Techniques
+## 🧬 DIVERSE MUTATION STRATEGIES (CRITICAL!)
 
-### AFL-Style Binary Mutations (for CONSTANT)
+**DO NOT just use `random.choice(candidates)`!** Implement these diverse mutation strategies:
 
-Implement these strategies for numeric constants:
-
+### Strategy 1: Fixed Candidates (20%)
 ```python
-# Bit flip
-value = 1234
-mutated = value ^ (1 << random.randint(0, 63))  # Flip one random bit
+# Boundary values, special values
+candidates = [0, 1, -1, MAX_INT, MIN_INT, NULL, ...]
+value = random.choice(candidates)
+```
 
-# Byte arithmetic
-mutated = value + random.choice([1, -1, 128, -128, 256, -256])
+### Strategy 2: Random Jump / Delta Mutation (25%)
+```python
+# Add/subtract random delta from original value
+if isinstance(ori_value, int):
+    delta = random.choice([1, -1, 10, -10, 100, -100, 1000, -1000, random.randint(-10000, 10000)])
+    value = ori_value + delta
+elif isinstance(ori_value, float):
+    delta = random.uniform(-1000.0, 1000.0)
+    value = ori_value * (1 + random.uniform(-0.5, 0.5))  # or percentage change
+```
 
-# Interesting values (AFL's magic numbers)
+### Strategy 3: Bit Flip Mutation (15%)
+```python
+# Flip random bits in the value
+if isinstance(ori_value, int):
+    bit_pos = random.randint(0, 63)
+    value = ori_value ^ (1 << bit_pos)
+    # Or flip multiple bits
+    for _ in range(random.randint(1, 4)):
+        value ^= (1 << random.randint(0, 63))
+```
+
+### Strategy 4: Byte Arithmetic (15%)
+```python
+# AFL-style byte arithmetic
+byte_deltas = [1, -1, 16, -16, 32, -32, 64, -64, 127, -127, 128, -128, 255, -255, 256, -256]
+value = ori_value + random.choice(byte_deltas)
+```
+
+### Strategy 5: Range Random (15%)
+```python
+# Generate completely random value in a range
+value = random.randint(-2147483648, 2147483647)  # full 32-bit range
+# Or for strings:
+length = random.randint(1, 100)
+value = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=length))
+```
+
+### Strategy 6: Interesting Values (10%)
+```python
+# AFL's interesting values
 interesting_8 = [-128, -1, 0, 1, 16, 32, 64, 100, 127]
 interesting_16 = [-32768, -129, 128, 255, 256, 512, 1000, 1024, 4096, 32767]
 interesting_32 = [-2147483648, -100663046, -32769, 32768, 65535, 65536, 100663045, 2147483647]
+interesting_64 = [-9223372036854775808, -1, 0, 1, 9223372036854775807]
+value = random.choice(interesting_8 + interesting_16 + interesting_32 + interesting_64)
 ```
-
-### Vulnerability-Driven Mutations (for ALL types)
-
-**Known {target_dbms} vulnerability patterns** to incorporate:
-
-1. **Extreme numeric values** (CONSTANT):
-   - Window functions with huge frame ranges: 999999999
-   - printf format width: %999999999d
-   - Large blob allocations: randomblob(2147483647)
-
-2. **Type confusion** (OPERATOR + CONSTANT):
-   - CAST with incompatible types
-   - Arithmetic on incompatible types
-   - Example: CAST(9223372036854775808 AS INTEGER)
-
-3. **Recursive bombs** (KEYWORD + CONSTANT):
-   - WITH RECURSIVE with large iteration counts
-   - Nested subqueries (depth > 100)
-
-4. **Conflict resolution edge cases** (KEYWORD):
-   - OR REPLACE with PRIMARY KEY violations
-   - OR IGNORE with UNIQUE constraint violations
 
 ---
 
@@ -127,27 +183,174 @@ interesting_32 = [-2147483648, -100663046, -32769, 32768, 65535, 65536, 10066304
 
 ### Module Structure
 
-Generate a complete Python module with:
+Generate a complete Python module with DIVERSE mutation strategies:
 
 ```python
 import random
-import struct
+import re
+import string
 
-# Mask definitions
-MASKS = {{
-    1: {{'type': 'CONSTANT', 'ori': 10, 'sql_type': 'integer'}},
-    2: {{'type': 'OPERATOR', 'ori': '+', 'category': 'arithmetic'}},
-    # ... all masks
+# The original SQL template with masks
+SQL_TEMPLATE = \"\"\"(paste the input SQL here with all masks)\"\"\"
+
+# Interesting values for AFL-style mutation
+INTERESTING_8 = [-128, -1, 0, 1, 16, 32, 64, 100, 127]
+INTERESTING_16 = [-32768, -129, 128, 255, 256, 512, 1000, 1024, 4096, 32767]
+INTERESTING_32 = [-2147483648, -100663046, -32769, 32768, 65535, 65536, 100663045, 2147483647]
+INTERESTING_64 = [-9223372036854775808, -1, 0, 1, 9223372036854775807]
+ALL_INTERESTING = INTERESTING_8 + INTERESTING_16 + INTERESTING_32 + INTERESTING_64
+
+# Define mutation info for each mask
+MASK_MUTATIONS = {{
+    1: {{
+        'pattern': r'\[CONSTANT, number:1, type:[^\]]+, ori:[^\]]+\]',
+        'type': 'CONSTANT',
+        'value_type': 'int',  # int, float, string, blob
+        'ori': 10,  # original value (as proper Python type)
+        'candidates': [0, 1, -1, 9223372036854775807, -9223372036854775808, 2147483647]
+    }},
+    2: {{
+        'pattern': r'\[OPERATOR, number:2, category:[^\]]+, ori:[^\]]+\]',
+        'type': 'OPERATOR',
+        'ori': '+',
+        'candidates': ['+', '-', '*', '/', '%']
+    }},
+    # ... define for ALL masks
 }}
+
+def _mutate_int(ori_value: int, candidates: list) -> int:
+    \"\"\"Apply diverse mutations to integer values.\"\"\"
+    strategy = random.choices(
+        ['candidate', 'delta', 'bitflip', 'byte_arith', 'range', 'interesting'],
+        weights=[20, 25, 15, 15, 15, 10]
+    )[0]
+    
+    if strategy == 'candidate':
+        return random.choice(candidates) if candidates else ori_value
+    elif strategy == 'delta':
+        # Random jump: add/subtract random delta
+        delta = random.choice([1, -1, 10, -10, 100, -100, 1000, -1000])
+        if random.random() < 0.3:
+            delta = random.randint(-100000, 100000)
+        return ori_value + delta
+    elif strategy == 'bitflip':
+        # Flip 1-4 random bits
+        value = ori_value
+        for _ in range(random.randint(1, 4)):
+            value ^= (1 << random.randint(0, 63))
+        return value
+    elif strategy == 'byte_arith':
+        # AFL-style byte arithmetic
+        byte_deltas = [1, -1, 16, -16, 32, -32, 64, -64, 127, -127, 128, -128, 255, -255, 256, -256]
+        return ori_value + random.choice(byte_deltas)
+    elif strategy == 'range':
+        # Full range random
+        return random.randint(-2147483648, 2147483647)
+    else:  # interesting
+        return random.choice(ALL_INTERESTING)
+
+def _mutate_float(ori_value: float, candidates: list) -> float:
+    \"\"\"Apply diverse mutations to float values.\"\"\"
+    strategy = random.choices(
+        ['candidate', 'delta', 'multiply', 'range', 'special'],
+        weights=[20, 30, 20, 15, 15]
+    )[0]
+    
+    if strategy == 'candidate':
+        return random.choice(candidates) if candidates else ori_value
+    elif strategy == 'delta':
+        delta = random.uniform(-1000.0, 1000.0)
+        return ori_value + delta
+    elif strategy == 'multiply':
+        factor = random.choice([0.0, 0.5, 2.0, 10.0, 0.1, -1.0, random.uniform(-10, 10)])
+        return ori_value * factor
+    elif strategy == 'range':
+        return random.uniform(-1e10, 1e10)
+    else:  # special
+        return random.choice([0.0, 1.0, -1.0, 1e308, -1e308, 1e-308, float('inf'), float('-inf')])
+
+def _mutate_string(ori_value: str, candidates: list) -> str:
+    \"\"\"Apply diverse mutations to string values.\"\"\"
+    strategy = random.choices(
+        ['candidate', 'append', 'repeat', 'random', 'special', 'truncate'],
+        weights=[20, 20, 15, 20, 15, 10]
+    )[0]
+    
+    if strategy == 'candidate':
+        return random.choice(candidates) if candidates else ori_value
+    elif strategy == 'append':
+        suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=random.randint(1, 20)))
+        return ori_value + suffix
+    elif strategy == 'repeat':
+        return ori_value * random.randint(2, 10)
+    elif strategy == 'random':
+        length = random.randint(1, 100)
+        return ''.join(random.choices(string.ascii_letters + string.digits + ' ', k=length))
+    elif strategy == 'special':
+        specials = ["", "NULL", "''", "' OR 1=1--", "\\x00", "a" * 1000, "1", "0"]
+        return random.choice(specials)
+    else:  # truncate
+        if len(ori_value) > 1:
+            return ori_value[:random.randint(1, len(ori_value)-1)]
+        return ori_value
 
 def mutate() -> str:
     \"\"\"
-    Generate one mutated SQL statement.
-    Returns: Complete SQL string with all masks replaced.
+    Generate one mutated SQL statement with DIVERSE mutation strategies.
+    Returns: Complete SQL string with ALL masks replaced by actual values.
     \"\"\"
-    # Implementation here
-    pass
+    result = SQL_TEMPLATE
+    
+    for mask_num, mask_info in MASK_MUTATIONS.items():
+        # 60% chance to mutate, 40% use original
+        if random.random() < 0.6:
+            if mask_info['type'] == 'CONSTANT':
+                ori = mask_info['ori']
+                candidates = mask_info.get('candidates', [])
+                vtype = mask_info.get('value_type', 'int')
+                
+                if vtype == 'int':
+                    new_value = _mutate_int(int(ori) if isinstance(ori, str) else ori, candidates)
+                elif vtype == 'float':
+                    new_value = _mutate_float(float(ori) if isinstance(ori, str) else ori, candidates)
+                else:  # string
+                    new_value = _mutate_string(str(ori), candidates)
+            else:
+                # For OPERATOR, FUNCTION, KEYWORD, FRAME, CAST_TYPE - use candidates
+                new_value = random.choice(mask_info.get('candidates', [mask_info['ori']]))
+        else:
+            new_value = mask_info['ori']
+        
+        # Format value for SQL
+        formatted = _format_sql_value(new_value, mask_info['type'], mask_info.get('value_type'))
+        result = re.sub(mask_info['pattern'], formatted, result)
+    
+    return result
+
+def _format_sql_value(value, mask_type: str, value_type: str = None) -> str:
+    \"\"\"Format value correctly for SQL syntax.\"\"\"
+    if mask_type == 'CONSTANT':
+        if value is None or (isinstance(value, str) and value.upper() == 'NULL'):
+            return 'NULL'
+        elif value_type == 'string' or isinstance(value, str):
+            # Escape single quotes and wrap
+            escaped = str(value).replace("'", "''")
+            return f"'{{escaped}}'"
+        else:
+            return str(value)
+    else:
+        return str(value)
+        # Replace the mask pattern with the actual value
+        result = re.sub(mask_info['pattern'], formatted, result)
+    
+    return result
 ```
+
+**CRITICAL**: The `mutate()` function MUST:
+1. Use `re.sub()` to replace EVERY mask pattern `[TYPE, number:X, ...]` with actual SQL values
+2. Return a VALID, EXECUTABLE SQL statement with NO remaining mask brackets
+3. Properly quote string values with single quotes
+4. Handle NULL without quotes
 
 ### Mutation Logic
 
@@ -211,9 +414,14 @@ Provide the complete Python module inside a code block:
 
 Create a Python module that implements aggressive, crash-inducing mutations for the above SQL targeting {target_dbms} version {dbms_version}.
 
+**CRITICAL REQUIREMENTS**:
+1. **MUST replace ALL mask patterns** - Use `re.sub()` to replace every `[CONSTANT, ...]`, `[OPERATOR, ...]`, `[FUNCTION, ...]`, `[KEYWORD, ...]` with actual SQL values
+2. **Output MUST be executable SQL** - No mask brackets `[...]` should remain in the output
+3. **Properly quote strings** - String constants need single quotes, NULL and numbers do not
+4. **High diversity** - Different output each time `mutate()` is called
+
 **Remember**:
-- High diversity (different output each time)
-- Include AFL-style binary mutations (bit flip, interesting values)
+- Include AFL-style binary mutations (bit flip, interesting values) for CONSTANT
 - Target known vulnerability patterns
 - Balance fixed candidates (40%), AFL mutations (40%), and random mutations (20%)
 """

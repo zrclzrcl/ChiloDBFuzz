@@ -46,15 +46,21 @@ Identify masked parts in SQL statements and perform two types of mutations:
 
 During each mutation round, a subset of masks should be randomly selected for mutation, while unselected masks must retain their original values (from the `ori` field).
 
-Mask format:
-[CONSTANT, number:<n>, type:<type>, ori:<original_value>]
+**There are 6 types of masks:**
+1. [CONSTANT, number:<n>, type:<type>, ori:<original_value>]
+2. [OPERATOR, number:<n>, category:<category>, ori:<op>]
+3. [FUNCTION, number:<n>, category:<category>, argc:<count>, ori:<func>]
+4. [KEYWORD, number:<n>, context:<context>, ori:<keyword_phrase>]
+5. [FRAME, number:<n>, ori:<frame_clause>]
+6. [CAST_TYPE, number:<n>, ori:<type_name>]
 
 Example:
-INSERT INTO t1 VALUES ([CONSTANT, number:1, type:smallint(4), ori:9410], [CONSTANT, number:2, type:smallint(4), ori:9412]);
+SELECT CAST(a AS [CAST_TYPE, number:1, ori:INTEGER]) FROM t;
+SELECT SUM(x) OVER (ORDER BY y [FRAME, number:2, ori:ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING]) FROM t;
 ---
 ### Possible Semantic Issues
 You should fix the following **semantic errors**, rather than rewriting the entire code:
-1. **Mask not properly replaced** – the generated SQL still contains `[CONSTANT, ...]` placeholders;
+1. **Mask not properly replaced** – the generated SQL still contains `[CONSTANT, ...]`, `[OPERATOR, ...]`, `[FUNCTION, ...]`, `[KEYWORD, ...]`, `[FRAME, ...]`, or `[CAST_TYPE, ...]` placeholders. **You MUST use `re.sub()` with proper regex patterns to replace ALL mask brackets.**
 2. **Insufficient randomness** – more than 25% of the generated SQL statements are too similar or identical;
 3. **Random logic bias** – the number of selected masks per mutation round is constant or unevenly distributed;
 4. **Minor logical issues** – such as missing type handling or incorrect string concatenation.
@@ -168,14 +174,18 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                     f"seed_id：{fix_seed_id}，试运行成功，语法正确，准备检验语义正确性")
                 is_semantics_correct: List[None | bool] = [None, None]
                 #语义判断
-                #首先是判断，输出的东西中不能含有掩码
+                #首先是判断，输出的东西中不能含有掩码（所有六种类型）
                 my_chilo_factory.mutator_fixer_logger.info(
                     f"seed_id：{fix_seed_id}，正在进行掩码输出语义检测")
+                mask_types = ["CONSTANT", "OPERATOR", "FUNCTION", "KEYWORD", "FRAME", "CAST_TYPE"]
                 for each_mutate_result in mutate_result:
-                    if "CONSTANT" in each_mutate_result:
-                        fix_reason.append("The generated mutated SQL statement still includes mask placeholders.")
-                        is_semantics_correct[0] = False
-                        sematic_mask_error_count += 1
+                    for mask_type in mask_types:
+                        if f"[{mask_type}," in each_mutate_result:
+                            fix_reason.append(f"The generated mutated SQL statement still includes [{mask_type}, ...] mask placeholders. Use re.sub() to replace ALL mask patterns with actual SQL values.")
+                            is_semantics_correct[0] = False
+                            sematic_mask_error_count += 1
+                            break
+                    if is_semantics_correct[0] is False:
                         break
                 if is_semantics_correct[0] is None:
                     is_semantics_correct[0] = True

@@ -333,6 +333,9 @@ function handleClick(e) {
   })
 }
 
+// 标记是否是首次加载数据（首次不触发任何闪烁效果）
+let isFirstLoad = true
+
 // Watch data for changes to trigger effects
 watch(() => props.data, (newVal) => {
   if (!newVal) return
@@ -343,6 +346,7 @@ watch(() => props.data, (newVal) => {
     const newDecay = new Float32Array(newSize)
     const newDelta = new Float32Array(newSize)
     const newTime = new Float32Array(newSize)
+    // 保留之前的值
     newDecay.set(decayBuffer)
     newDelta.set(deltaBuffer)
     newTime.set(lastChangeTime)
@@ -352,17 +356,22 @@ watch(() => props.data, (newVal) => {
     resize()
   }
 
-  // Detect changes
-  // Optimization: Check random samples or just iterate if < 100k
-  // For 65k, iteration is fast enough in JS (approx 1-2ms)
+  // 首次加载时，只保存数据，不触发任何闪烁效果
+  if (isFirstLoad) {
+    lastData = new Uint8Array(newVal)
+    isFirstLoad = false
+    return
+  }
+
+  // Detect changes - 只对真正变化的格子设置heat
   const len = newVal.length
-  let changed = false
   const now = (Date.now() - startTime) / 1000
   
   for (let i = 0; i < len; i++) {
     const v = newVal[i]
-    const old = lastData[i] || 0
+    const old = lastData[i] !== undefined ? lastData[i] : 0
     
+    // 只有值真正变化才触发效果
     if (v !== old) {
       // Record the change magnitude (delta)
       deltaBuffer[i] = v - old
@@ -371,27 +380,28 @@ watch(() => props.data, (newVal) => {
       // Heat flash (intensity based on delta magnitude)
       const deltaMag = Math.abs(v - old)
       decayBuffer[i] = Math.min(1.0, 0.5 + deltaMag * 0.1)
-      changed = true
       
-      // Spawn ripple if it's a "new" bit (0->nonzero) or large change
-      if ((old === 0 && v > 0) || deltaMag >= 10) {
-        if (Math.random() > 0.96) { // Greatly limit ripples to avoid chaos
-          const c = cols.value
-          const col = i % c
-          const row = Math.floor(i / c)
-          const x = col * (cellSize.value + props.gap) + cellSize.value/2
-          const y = row * (cellSize.value + props.gap) + cellSize.value/2
-          
-          ripples.push({ x, y, r: 0, age: 0.6, maxR: 15 }) // Smaller ripple with max radius
+      // Spawn ripple ONLY for 0->nonzero transitions (new coverage)
+      if (old === 0 && v > 0) {
+        // 对于新覆盖的bit，生成涟漪效果
+        const c = cols.value
+        const col = i % c
+        const row = Math.floor(i / c)
+        const x = col * (cellSize.value + props.gap) + cellSize.value/2
+        const y = row * (cellSize.value + props.gap) + cellSize.value/2
+        
+        // 控制涟漪数量，避免太多
+        if (ripples.length < 20) {
+          ripples.push({ x, y, r: 0, age: 0.8, maxR: 25 })
         }
       }
     }
+    // 注意：如果值没变，不要修改decayBuffer，让它自然衰减
   }
   
-  if (changed || lastData.length !== len) {
-    lastData = new Uint8Array(newVal) // Clone
-  }
-}, { deep: true }) // Note: deep watch on array can be expensive, but here we replace the array ref usually
+  // 更新lastData用于下次比较
+  lastData = new Uint8Array(newVal)
+}, { deep: true })
 
 onMounted(() => {
   window.addEventListener('resize', resize)

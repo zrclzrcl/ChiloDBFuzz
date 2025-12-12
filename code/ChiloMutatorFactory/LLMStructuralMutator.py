@@ -4,221 +4,201 @@ from .chilo_factory import ChiloFactory
 
 def _get_structural_prompt(sql, target_dbms, dbms_version):
     prompt = f"""
-You are an **ELITE database security researcher** specializing in {target_dbms} v{dbms_version} crash discovery. Your mission is to generate **CRASH-INDUCING SQL** by learning from REAL historical vulnerabilities.
+You are an expert **SQL fuzzing and coverage engineer**. Your task is to perform **STRUCTURAL MUTATION** on the given SQL test case to maximize code coverage in {target_dbms} v{dbms_version}.
 
-🎯 PRIMARY OBJECTIVE: Generate SQL that is **HIGHLY LIKELY TO CRASH** {target_dbms} v{dbms_version}, NOT just syntactically complex variations.
+🎯 **PRIMARY OBJECTIVE**: Enrich the SQL test case by adding diverse SQL structures, functions, and statements to explore MORE code paths in the DBMS.
 
 ---
 
-## 📚 LEARN FROM REAL CRASHES (Few-Shot Examples)
+## 📋 STRUCTURAL MUTATION STRATEGIES
 
-These are ACTUAL SQL patterns that triggered crashes in SQLite. Study them and generate SIMILAR patterns:
+Apply **3-5** of the following strategies to enrich the input SQL:
 
-### Example 1: CVE-2019-8457 - Window Function Stack Overflow
-**Trigger Pattern**: Extreme window frame range causes stack overflow
+### 1. ADD NEW SQL STATEMENTS
+Append new statements that interact with existing tables/data:
 ```sql
-CREATE TABLE t1(x INTEGER);
-INSERT INTO t1 VALUES(1),(2),(3);
-SELECT max(x) OVER (
-    ORDER BY x 
-    ROWS BETWEEN 1 PRECEDING AND 1000000000 FOLLOWING
-) FROM t1;
-```
-**Why it crashes**: SQLite allocates an array for 1 billion rows, malloc fails, NULL pointer dereference
-**Key pattern**: Window function + extreme ROWS BETWEEN range
+-- Create new auxiliary structures
+CREATE INDEX IF NOT EXISTS idx_col ON existing_table(column);
+CREATE VIEW IF NOT EXISTS v1 AS SELECT * FROM existing_table;
+CREATE TRIGGER IF NOT EXISTS trg1 AFTER INSERT ON t BEGIN SELECT 1; END;
 
-### Example 2: CVE-2020-13871 - FTS3 Use-After-Free
-**Trigger Pattern**: FTS3 virtual table with complex MATCH query
-```sql
-CREATE VIRTUAL TABLE t1 USING fts3(content TEXT);
-INSERT INTO t1 VALUES('test data ' || randomblob(100000));
-SELECT * FROM t1 WHERE t1 MATCH 'a*' || 'b*' || 'c*' || 'd*' || 'e*';
+-- Add new queries with different patterns
+SELECT * FROM existing_table WHERE column IN (SELECT column FROM t2);
+SELECT * FROM existing_table GROUP BY column HAVING COUNT(*) > 0;
+SELECT * FROM existing_table ORDER BY column LIMIT 10 OFFSET 5;
 ```
-**Why it crashes**: Complex wildcard pattern with large data causes memory corruption
-**Key pattern**: FTS virtual table + wildcard explosion + large data
 
-### Example 3: CVE-2022-35737 - Printf Format String Array Overflow
-**Trigger Pattern**: Extreme format width in printf
-```sql
-SELECT printf('%.*c', 2147483647, 'x');
-SELECT printf('%999999999d', 123);
-```
-**Why it crashes**: Width specifier causes integer overflow in buffer allocation
-**Key pattern**: printf() + extreme width specifier
+### 2. ADD BUILT-IN FUNCTIONS
+Introduce various {target_dbms} built-in functions:
 
-### Example 4: CVE-2020-13632 - Recursive CTE Infinite Loop
-**Trigger Pattern**: Badly designed recursive CTE
-```sql
-WITH RECURSIVE c(x) AS (
-    SELECT 1
-    UNION ALL
-    SELECT x+1 FROM c WHERE x < 100000
-)
-SELECT sum(x) FROM c;
-```
-**Why it crashes**: Stack overflow from deep recursion, or excessive memory allocation
-**Key pattern**: WITH RECURSIVE + large iteration count
+**Aggregate Functions**:
+- SUM(), AVG(), COUNT(), MAX(), MIN(), TOTAL(), GROUP_CONCAT()
 
-### Example 5: Integer Overflow in Expression
-**Trigger Pattern**: Arithmetic overflow in constant folding
-```sql
-SELECT CAST(9223372036854775807 AS INTEGER) + 1;
-SELECT CAST('9223372036854775808' AS INTEGER);
-SELECT 9223372036854775807 * 2;
-```
-**Why it crashes**: Integer overflow handling bug, signed/unsigned confusion
-**Key pattern**: MAX_INT arithmetic operations
+**Scalar Functions**:
+- ABS(), COALESCE(), IFNULL(), NULLIF(), IIF(), TYPEOF(), QUOTE()
+- LENGTH(), UPPER(), LOWER(), TRIM(), LTRIM(), RTRIM(), SUBSTR(), REPLACE(), INSTR()
+- HEX(), UNHEX(), ZEROBLOB(), RANDOMBLOB(), RANDOM(), UNICODE(), CHAR()
+- ROUND(), PRINTF(), LIKELIHOOD(), LIKELY(), UNLIKELY()
 
-### Example 6: Type Confusion in UNION
-**Trigger Pattern**: Mismatched types in UNION with aggressive CAST
-```sql
-SELECT CAST(randomblob(1000000) AS INTEGER)
-UNION ALL
-SELECT CAST('not a number' AS INTEGER)
-UNION ALL
-SELECT CAST(1e308 AS INTEGER);
-```
-**Why it crashes**: Type conversion edge cases, buffer overflow in CAST implementation
-**Key pattern**: UNION + aggressive CAST + extreme values
+**Date/Time Functions**:
+- date(), time(), datetime(), julianday(), strftime(), unixepoch()
 
-### Example 7: Nested Aggregate Complexity
-**Trigger Pattern**: Deeply nested aggregates with window functions
+**Window Functions**:
+- ROW_NUMBER(), RANK(), DENSE_RANK(), NTILE(), LAG(), LEAD()
+- FIRST_VALUE(), LAST_VALUE(), NTH_VALUE()
+- SUM/AVG/COUNT OVER (PARTITION BY ... ORDER BY ...)
+
+Example:
 ```sql
 SELECT 
-    SUM(AVG(MAX(x))) OVER (
-        PARTITION BY COUNT(y) 
-        ORDER BY TOTAL(z)
-        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-    )
-FROM (
-    SELECT randomblob(1000) as x, randomblob(1000) as y, randomblob(1000) as z
-    FROM generate_series(1, 1000)
-);
+    column,
+    ROW_NUMBER() OVER (ORDER BY column) as rn,
+    LAG(column, 1) OVER (ORDER BY column) as prev_val,
+    SUM(column) OVER (PARTITION BY category) as category_sum
+FROM existing_table;
 ```
-**Why it crashes**: Complex aggregate nesting confuses query optimizer, memory corruption
-**Key pattern**: Nested aggregates + window functions + large data
 
-### Example 8: Trigger Cascading Chaos
-**Trigger Pattern**: Recursive trigger invocations
+### 3. ADD SUBQUERIES
+Introduce subqueries in various positions:
 ```sql
-CREATE TABLE t1(x INT);
-CREATE TRIGGER trig1 AFTER INSERT ON t1 BEGIN
-    INSERT INTO t1 SELECT x+1 FROM t1 WHERE x < 100;
-END;
-INSERT INTO t1 VALUES(1);
+-- Scalar subquery
+SELECT (SELECT MAX(id) FROM t) as max_id, * FROM existing_table;
+
+-- EXISTS/NOT EXISTS
+SELECT * FROM t1 WHERE EXISTS (SELECT 1 FROM t2 WHERE t2.id = t1.id);
+
+-- IN/NOT IN
+SELECT * FROM t1 WHERE column IN (SELECT column FROM t2);
+
+-- FROM clause subquery
+SELECT * FROM (SELECT *, ROWID FROM existing_table) AS sub WHERE sub.ROWID > 0;
+
+-- Correlated subquery
+SELECT *, (SELECT COUNT(*) FROM t2 WHERE t2.fk = t1.pk) as ref_count FROM t1;
 ```
-**Why it crashes**: Trigger recursion depth limit bypass, stack overflow
-**Key pattern**: Self-referencing trigger + recursive INSERT
+
+### 4. ADD COMMON TABLE EXPRESSIONS (CTE)
+Introduce WITH clauses:
+```sql
+WITH 
+    cte1 AS (SELECT * FROM existing_table WHERE column > 0),
+    cte2 AS (SELECT column, COUNT(*) as cnt FROM cte1 GROUP BY column)
+SELECT * FROM cte1 JOIN cte2 ON cte1.column = cte2.column;
+
+-- Recursive CTE (moderate recursion, 10-100 iterations)
+WITH RECURSIVE cnt(x) AS (
+    SELECT 1
+    UNION ALL
+    SELECT x+1 FROM cnt WHERE x < 50
+)
+SELECT * FROM cnt;
+```
+
+### 5. ADD JOIN VARIATIONS
+Introduce different join types:
+```sql
+SELECT * FROM t1 INNER JOIN t2 ON t1.id = t2.fk;
+SELECT * FROM t1 LEFT JOIN t2 ON t1.id = t2.fk;
+SELECT * FROM t1 CROSS JOIN t2;
+SELECT * FROM t1 NATURAL JOIN t2;
+SELECT * FROM t1, t2 WHERE t1.id = t2.fk;  -- implicit join
+```
+
+### 6. ADD CASE/IIF EXPRESSIONS
+Introduce conditional expressions:
+```sql
+SELECT 
+    CASE 
+        WHEN column > 100 THEN 'high'
+        WHEN column > 50 THEN 'medium'
+        ELSE 'low'
+    END as category,
+    IIF(column IS NULL, 0, column) as safe_value
+FROM existing_table;
+```
+
+### 7. ADD TYPE CONVERSIONS
+Introduce CAST expressions:
+```sql
+SELECT 
+    CAST(column AS TEXT) as text_val,
+    CAST(column AS REAL) as real_val,
+    CAST(column AS INTEGER) as int_val,
+    CAST(column AS BLOB) as blob_val
+FROM existing_table;
+```
+
+### 8. ADD COMPOUND QUERIES
+Introduce UNION/INTERSECT/EXCEPT:
+```sql
+SELECT column FROM t1
+UNION ALL
+SELECT column FROM t2
+EXCEPT
+SELECT column FROM t3;
+```
+
+### 9. ADD AGGREGATE WITH GROUPING
+Introduce GROUP BY with various features:
+```sql
+SELECT 
+    category,
+    COUNT(*) as cnt,
+    SUM(value) as total,
+    AVG(value) as avg_val,
+    GROUP_CONCAT(name, ', ') as names
+FROM existing_table
+GROUP BY category
+HAVING COUNT(*) > 1
+ORDER BY total DESC;
+```
+
+### 10. ADD INSERT/UPDATE/DELETE VARIATIONS
+Introduce data modification statements:
+```sql
+INSERT INTO t SELECT * FROM t WHERE 0;  -- no-op insert with subquery
+INSERT OR REPLACE INTO t VALUES (...);
+INSERT OR IGNORE INTO t VALUES (...);
+UPDATE t SET column = column + 1 WHERE column > 0;
+UPDATE t SET column = (SELECT MAX(column) FROM t) WHERE ROWID = 1;
+DELETE FROM t WHERE column IN (SELECT column FROM t2);
+```
+
+### 11. ADD VIRTUAL TABLES (if applicable)
+Introduce special table types:
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS ft USING fts5(content);
+INSERT INTO ft VALUES ('test content');
+SELECT * FROM ft WHERE ft MATCH 'test';
+```
+
+### 12. ADD EXPRESSION COMPLEXITY
+Combine operators and functions:
+```sql
+SELECT 
+    ABS(column1 - column2) * 100.0 / NULLIF(column1, 0) as pct_diff,
+    COALESCE(column1, column2, 0) as merged_value,
+    SUBSTR(text_col, 1, INSTR(text_col, ' ') - 1) as first_word,
+    PRINTF('%08d', column) as formatted
+FROM existing_table;
+```
 
 ---
 
-## 🎯 YOUR MISSION: Apply These Patterns
+## ⚠️ CONSTRAINTS
 
-Based on the above REAL crash examples, perform **VULNERABILITY-DRIVEN** mutations on the input SQL:
-
-📋 CRASH-INDUCING MUTATION STRATEGIES (Apply 3-5):
-
-1. **WINDOW FUNCTION ATTACKS** (模仿 CVE-2019-8457):
-   - Add window functions with extreme ROWS BETWEEN ranges (e.g., 999999999 FOLLOWING)
-   - Combine multiple window functions in nested expressions
-   - Use RANGE BETWEEN with extreme values
-   - Mix window functions with large data generation (randomblob, generate_series)
-   - Example pattern: `SELECT func(x) OVER (ROWS BETWEEN 1000000000 PRECEDING AND 1000000000 FOLLOWING)`
-
-2. **VIRTUAL TABLE EXPLOITATION** (模仿 CVE-2020-13871):
-   - Create FTS3/FTS5 virtual tables
-   - Insert large blobs or text data (randomblob(100000+))
-   - Use complex MATCH queries with wildcard explosion ('a*' || 'b*' || ... repeat 100+ times)
-   - Example pattern: `CREATE VIRTUAL TABLE t USING fts3(x); ... SELECT * FROM t WHERE MATCH 'pattern*'`
-
-3. **PRINTF/FORMAT STRING ATTACKS** (模仿 CVE-2022-35737):
-   - Inject printf() calls with extreme format width specifiers
-   - Use %.*c, %999999999d, %2147483647s patterns
-   - Combine with randomblob or long strings
-   - Example pattern: `SELECT printf('%.*c', 2147483647, 'x')`
-
-4. **RECURSIVE CTE BOMBS** (模仿 CVE-2020-13632):
-   - Add WITH RECURSIVE with large iteration limits (50000+)
-   - Create recursive structures with UNION ALL
-   - Combine with aggregates or complex expressions
-   - Example pattern: `WITH RECURSIVE c AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<100000) SELECT * FROM c`
-
-5. **INTEGER OVERFLOW TRIGGERS** (模仿 Example 5):
-   - Use MAX_INT (9223372036854775807) in arithmetic operations
-   - CAST extreme string values to INTEGER
-   - Arithmetic: MAX_INT + 1, MAX_INT * 2, etc.
-   - Example pattern: `SELECT CAST(9223372036854775807 AS INTEGER) + 1`
-
-6. **TYPE CONFUSION & CAST CHAOS** (模仿 Example 6):
-   - Force CAST between incompatible types (blob→int, float→text, etc.)
-   - Use UNION with mismatched column types
-   - Combine extreme values with CAST (1e308, randomblob(1000000))
-   - Example pattern: `SELECT CAST(randomblob(100000) AS INTEGER) UNION ALL SELECT CAST(1e308 AS INTEGER)`
-
-7. **AGGREGATE NESTING ATTACKS** (模仿 Example 7):
-   - Nest multiple aggregates (SUM(AVG(MAX(...))))
-   - Combine with window functions
-   - Use large data sources (randomblob, generate_series)
-   - Example pattern: `SELECT SUM(AVG(x)) OVER (...) FROM (SELECT randomblob(1000) FROM ...)`
-
-8. **TRIGGER RECURSION** (模仿 Example 8):
-   - Create self-referencing triggers
-   - AFTER INSERT/UPDATE triggers that modify the same table
-   - Cascading trigger chains
-   - Example pattern: `CREATE TRIGGER t AFTER INSERT ON x BEGIN INSERT INTO x SELECT ...; END`
-
-9. **MEMORY STRESS PATTERNS**:
-   - Use randomblob() with extreme sizes (100000+)
-   - Generate large result sets (CROSS JOIN, generate_series)
-   - String concatenation bombs ('x' || 'x' || ... repeat many times)
-   - Example pattern: `SELECT randomblob(2147483647)` or `SELECT 'a' || 'b' || ... (repeat 10000 times)`
-
-10. **CONSTRAINT VIOLATION PATTERNS**:
-   - Combine OR REPLACE/OR IGNORE with constraint conflicts
-   - Foreign key cascading with circular references
-   - CHECK constraints that reference complex expressions
-   - Example pattern: `INSERT OR REPLACE INTO t PRIMARY KEY violations`
-
-⚠️ CRITICAL CONSTRAINTS:
-1. **Execution time**: Keep operations fast (<1 second). Avoid actual infinite loops, but create complex-enough structures that approach time limits.
-2. **Syntactic validity**: Generated SQL MUST be syntactically correct for {target_dbms} version {dbms_version}.
-3. **Pure SQL**: Output only SQL statements, no comments or explanations in the code block.
-4. **Semicolon termination**: Each statement ends with `;`.
-
----
-
-## 🎲 MUTATION GUIDELINES
-
-**Intensity**: **EXTREME** - This is {target_dbms} v{dbms_version}, apply patterns from the crash examples above
-
-**What to do**:
-1. **Study the 8 crash examples** at the top - these are REAL CVEs
-2. **Identify 3-5 patterns** that can be applied to the input SQL
-3. **Combine patterns** for maximum crash potential (e.g., window function + extreme values + type confusion)
-4. **Add 5-20 new SQL statements** that implement these patterns
-5. **Keep the original SQL's tables/data** but transform the queries aggressively
-
-**What to prioritize**:
-- ✅ Window functions with extreme ranges (999999999)
-- ✅ printf() with extreme format widths (%2147483647d)
-- ✅ WITH RECURSIVE with large iterations (50000+)
-- ✅ CAST with incompatible types + extreme values
-- ✅ FTS3/FTS5 virtual tables with wildcard explosions
-- ✅ randomblob() with extreme sizes (1000000+)
-- ✅ Self-referencing triggers
-- ✅ Integer overflow arithmetic (MAX_INT + 1)
-
-**What to avoid**:
-- ❌ Simple value changes (that's for constant mutation)
-- ❌ Minor tweaks (we want RADICAL transformation)
-- ❌ Generic complexity without crash potential
-- ❌ Patterns NOT based on the examples above
+1. **Keep existing SQL**: Include the original SQL statements (may modify slightly)
+2. **Syntactic validity**: All SQL must be valid for {target_dbms} v{dbms_version}
+3. **Reasonable size**: Add 5-15 new statements, total output should be manageable
+4. **Use existing tables**: Reference tables created in the original SQL
+5. **Moderate values**: Use reasonable numeric values (avoid extreme overflow values)
+6. **Pure SQL output**: No comments, no explanations in the code block
 
 ---
 
 ## 📥 INPUT TEST CASE
 
-Transform this SQL using crash-inducing patterns:
+Enrich this SQL with diverse structures:
 
 ```sql
 {sql}
@@ -228,23 +208,20 @@ Transform this SQL using crash-inducing patterns:
 
 ## 📤 OUTPUT FORMAT
 
-Return ONLY the mutated SQL wrapped as:
+Return the enriched SQL wrapped as:
 
 ```sql
-(your crash-inducing mutated SQL here)
+(original SQL + new diverse statements here)
 ```
 
-**No explanations, no comments, just pure SQL.**
-
----
-
-## 🚀 NOW GENERATE
-
-Apply 3-5 crash-inducing patterns from the examples above to transform the input SQL into a {target_dbms} v{dbms_version} crash trigger. 
-
-**Remember**: You're not just making it complex - you're applying REAL vulnerability patterns that ACTUALLY crashed SQLite!
+**Remember**: 
+- Keep the original SQL's table structures
+- Add diverse functions, subqueries, joins, CTEs
+- Goal is CODE COVERAGE, not just crashes
+- Make the test case RICHER and explore more DBMS code paths
 """
     return prompt
+
 
 def structural_mutator(my_chilo_factory: ChiloFactory):
     """
@@ -253,15 +230,14 @@ def structural_mutator(my_chilo_factory: ChiloFactory):
     """
     structural_count = 0
     my_chilo_factory.structural_mutator_logger.info("结构化变异器已启动！")
-    system_prompt = """You are an AGGRESSIVE database security researcher and fuzzing expert specializing in crash discovery. Your mission is to generate EXTREME SQL test cases that exploit edge cases, boundary conditions, and known vulnerability patterns in database systems. You have deep knowledge of:
-- DBMS implementation bugs and historical CVEs
-- Type system vulnerabilities and implicit conversion edge cases  
-- Query optimizer weaknesses and plan generation bugs
-- Memory corruption patterns in SQL engines
-- Concurrency and transaction isolation anomalies
-- Parser and lexer edge cases
+    system_prompt = """You are an expert SQL fuzzing and coverage engineer. Your mission is to enrich SQL test cases to maximize code coverage in database systems. You have deep knowledge of:
+- SQL syntax and semantics across different DBMS
+- Built-in functions: aggregate, scalar, window, date/time functions
+- Query structures: subqueries, CTEs, JOINs, compound queries
+- DDL statements: CREATE TABLE/INDEX/VIEW/TRIGGER
+- DML variations: INSERT/UPDATE/DELETE with various clauses
 
-Your generated SQL should be MAXIMALLY COMPLEX and target crash-prone areas. Prioritize creativity and aggressiveness over conservatism. Every test case should push the DBMS to its limits."""
+Your goal is to make SQL test cases RICHER and more DIVERSE to explore more code paths in the DBMS. Add new statements, functions, and query patterns while keeping the original SQL's table structures."""
     while True:
         structural_mutate_start_time = time.time()
         structural_count += 1

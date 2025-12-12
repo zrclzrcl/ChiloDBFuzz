@@ -22,7 +22,7 @@ Instruction: You are a **DBMS fuzzing expert**. Your task is to identify and ann
 
 ### Annotation Types
 
-You must identify and annotate the following 4 types of mutable components:
+You must identify and annotate the following **6 types** of mutable components:
 
 #### 1. CONSTANT - Literal Values
 Any literal constant in the SQL: numbers, strings, dates, blobs, NULL, etc.
@@ -46,66 +46,95 @@ Examples:
 - Comparison: `>`, `<`, `>=`, `<=`, `=`, `!=`, `<>`
 - Logical: `AND`, `OR`
 - Bitwise: `&`, `|`, `<<`, `>>`
+- String: `||`, `LIKE`, `GLOB`
 
 Annotation format:
 ```
-[OPERATOR, number:X, category:<arithmetic|comparison|logical|bitwise>, ori:<original_operator>]
+[OPERATOR, number:X, category:<arithmetic|comparison|logical|bitwise|string>, ori:<original_operator>]
 ```
 
 #### 3. FUNCTION - Function Names
 Built-in function names that can be replaced with similar functions.
 
+**IMPORTANT**: Include `argc` (argument count) to enable safe substitution.
+
 Examples:
-- Aggregate: `SUM`, `AVG`, `COUNT`, `MAX`, `MIN`
-- Scalar: `ABS`, `ROUND`, `UPPER`, `LOWER`, `LENGTH`
-- Date: `datetime`, `date`, `julianday`
+- Aggregate (1 arg): `SUM`, `AVG`, `COUNT`, `MAX`, `MIN`, `TOTAL`
+- Aggregate (2+ args): `GROUP_CONCAT`
+- Scalar 1-arg: `ABS`, `UPPER`, `LOWER`, `LENGTH`, `TYPEOF`, `QUOTE`
+- Scalar 2-arg: `SUBSTR`, `INSTR`, `NULLIF`, `IFNULL`, `COALESCE`
+- Scalar 3-arg: `SUBSTR`, `REPLACE`, `IIF`
 
 Annotation format:
 ```
-[FUNCTION, number:X, category:<aggregate|scalar_numeric|scalar_string|datetime>, ori:<original_function>]
+[FUNCTION, number:X, category:<aggregate|scalar_numeric|scalar_string|datetime|window>, argc:<arg_count>, ori:<original_function>]
 ```
 
-**Important**: Only annotate the function NAME, not the parentheses or arguments.
-Example: `SUM(x)` → `[FUNCTION, number:1, category:aggregate, ori:SUM](x)`
+**Note**: Only annotate the function NAME, not the parentheses or arguments.
+Example: `SUBSTR(x,1,3)` → `[FUNCTION, number:1, category:scalar_string, argc:3, ori:SUBSTR](x,1,3)`
 
-#### 4. KEYWORD - Mutable Keywords
-Keywords that can be changed to alter SQL behavior, but NOT core SQL structure keywords.
-
-**Mutable keywords** (should be annotated):
-- Constraint keywords: `NOT NULL`, `UNIQUE`, `PRIMARY KEY`, `FOREIGN KEY`
-- Conflict resolution: `OR REPLACE`, `OR IGNORE`, `OR FAIL`, `OR ABORT`, `OR ROLLBACK`
-- Modifiers: `DISTINCT`, `ALL`
-- Temporality: `TEMPORARY`, `TEMP`
-- Existence checks: `IF EXISTS`, `IF NOT EXISTS`
-- Join types: `INNER`, `LEFT`, `RIGHT`, `CROSS`, `OUTER`
-- Order: `ASC`, `DESC`
-- Transaction types: `DEFERRED`, `IMMEDIATE`, `EXCLUSIVE`
-- Trigger timing: `BEFORE`, `AFTER`, `INSTEAD OF`
-- Foreign key actions: `CASCADE`, `SET NULL`, `RESTRICT`, `NO ACTION`
-- Collation: `COLLATE BINARY`, `COLLATE NOCASE`, `COLLATE RTRIM`
-
-**Immutable keywords** (DO NOT annotate):
-- Core structure: `SELECT`, `FROM`, `WHERE`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`, `ALTER`, `TABLE`, `INDEX`, `VIEW`, `TRIGGER`
-- Data definition: `INT`, `INTEGER`, `REAL`, `TEXT`, `BLOB` (treat as immutable for simplicity)
-- Control flow: `BEGIN`, `END`, `IF`, `THEN`, `ELSE`
+#### 4. KEYWORD - Mutable SQL Keywords
+Keywords that alter SQL behavior but not core structure.
 
 Annotation format:
 ```
-[KEYWORD, number:X, context:<brief_context>, ori:<original_keyword_phrase>]
+[KEYWORD, number:X, context:<context_type>, ori:<original_keyword_phrase>]
 ```
 
-Example contexts:
-- `context:constraint` - for NOT NULL, UNIQUE
-- `context:conflict` - for OR REPLACE, OR IGNORE
-- `context:modifier` - for DISTINCT, ALL
-- `context:join` - for INNER, LEFT
-- `context:order` - for ASC, DESC
+Context types and their values:
+
+| context | Possible values |
+|---------|----------------|
+| `constraint` | NOT NULL, UNIQUE, PRIMARY KEY, CHECK |
+| `conflict` | OR REPLACE, OR IGNORE, OR FAIL, OR ABORT, OR ROLLBACK |
+| `modifier` | DISTINCT, ALL |
+| `join` | INNER, LEFT, LEFT OUTER, CROSS, NATURAL |
+| `order` | ASC, DESC |
+| `nulls` | NULLS FIRST, NULLS LAST |
+| `existence` | IF EXISTS, IF NOT EXISTS |
+| `temp` | TEMPORARY, TEMP |
+| `transaction` | DEFERRED, IMMEDIATE, EXCLUSIVE |
+| `fk_action` | CASCADE, SET NULL, SET DEFAULT, RESTRICT, NO ACTION |
+
+**DO NOT annotate**: SELECT, FROM, WHERE, INSERT, UPDATE, DELETE, CREATE, TABLE, etc.
+
+#### 5. FRAME - Window Function Frame Clause (NEW)
+Frame specifications in window functions - a common source of crashes.
+
+Annotation format:
+```
+[FRAME, number:X, ori:<frame_clause>]
+```
+
+Examples:
+- `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`
+- `ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING`
+- `RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING`
+- `GROUPS BETWEEN 1 PRECEDING AND 1 FOLLOWING`
+
+Example usage:
+```sql
+SUM(x) OVER (ORDER BY y [FRAME, number:1, ori:ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW])
+```
+
+#### 6. CAST_TYPE - Type in CAST expressions (NEW)
+The target type in CAST/type conversion - high bug potential.
+
+Annotation format:
+```
+[CAST_TYPE, number:X, ori:<type_name>]
+```
+
+Examples:
+- `CAST(x AS [CAST_TYPE, number:1, ori:INTEGER])`
+- `CAST(x AS [CAST_TYPE, number:2, ori:TEXT])`
+- `CAST(x AS [CAST_TYPE, number:3, ori:REAL])`
 
 ---
 
 ### Annotation Rules
 
-1. **Numbering**: Start from 1, increment sequentially, no duplicates.
+1. **Numbering**: Start from 1, increment sequentially across ALL mask types.
 
 2. **Do NOT annotate**:
    - Table names, column names, aliases
@@ -117,9 +146,10 @@ Example contexts:
 
 4. **Consecutive keywords**: If multiple mutable keywords appear together, annotate them as ONE mask.
    Example: `NOT NULL` → `[KEYWORD, number:1, context:constraint, ori:NOT NULL]`
-   Example: `IF NOT EXISTS` → `[KEYWORD, number:2, context:existence_check, ori:IF NOT EXISTS]`
 
-5. **Output format**: Wrap the result in:
+5. **FRAME only in window functions**: Only annotate FRAME when it appears after `OVER (...)`.
+
+6. **Output format**: Wrap the result in:
    ```sql
    (annotated SQL)
    ```
@@ -131,8 +161,8 @@ Example contexts:
 **Input 1:**
 ```sql
 CREATE TABLE t (x INTEGER PRIMARY KEY, y TEXT NOT NULL);
-INSERT INTO t VALUES (10, 'hello');
-SELECT SUM(x) FROM t WHERE x > 5 ORDER BY y DESC;
+INSERT OR REPLACE INTO t VALUES (10, 'hello');
+SELECT SUM(x) OVER (ORDER BY y ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) FROM t WHERE x > 5;
 ```
 
 **Output 1:**
@@ -141,30 +171,26 @@ CREATE TABLE t (
     x INTEGER [KEYWORD, number:1, context:constraint, ori:PRIMARY KEY], 
     y TEXT [KEYWORD, number:2, context:constraint, ori:NOT NULL]
 );
-INSERT INTO t VALUES (
-    [CONSTANT, number:3, type:integer, ori:10], 
-    [CONSTANT, number:4, type:string, ori:hello]
+INSERT [KEYWORD, number:3, context:conflict, ori:OR REPLACE] INTO t VALUES (
+    [CONSTANT, number:4, type:integer, ori:10], 
+    [CONSTANT, number:5, type:string, ori:hello]
 );
-SELECT [FUNCTION, number:5, category:aggregate, ori:SUM](x) 
-FROM t 
-WHERE x [OPERATOR, number:6, category:comparison, ori:>] [CONSTANT, number:7, type:integer, ori:5] 
-ORDER BY y [KEYWORD, number:8, context:order, ori:DESC];
+SELECT [FUNCTION, number:6, category:aggregate, argc:1, ori:SUM](x) OVER (
+    ORDER BY y [FRAME, number:7, ori:ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING]
+) FROM t WHERE x [OPERATOR, number:8, category:comparison, ori:>] [CONSTANT, number:9, type:integer, ori:5];
 ```
 
 **Input 2:**
 ```sql
-INSERT OR REPLACE INTO t VALUES (1);
-SELECT AVG(a + b) FROM t WHERE c != 10;
+SELECT CAST(a AS INTEGER) + ABS(b) FROM t WHERE c != 10 ORDER BY d DESC NULLS LAST;
 ```
 
 **Output 2:**
 ```sql
-INSERT [KEYWORD, number:1, context:conflict, ori:OR REPLACE] INTO t VALUES ([CONSTANT, number:2, type:integer, ori:1]);
-SELECT [FUNCTION, number:3, category:aggregate, ori:AVG](
-    a [OPERATOR, number:4, category:arithmetic, ori:+] b
-) 
+SELECT CAST(a AS [CAST_TYPE, number:1, ori:INTEGER]) [OPERATOR, number:2, category:arithmetic, ori:+] [FUNCTION, number:3, category:scalar_numeric, argc:1, ori:ABS](b) 
 FROM t 
-WHERE c [OPERATOR, number:5, category:comparison, ori:!=] [CONSTANT, number:6, type:integer, ori:10];
+WHERE c [OPERATOR, number:4, category:comparison, ori:!=] [CONSTANT, number:5, type:integer, ori:10] 
+ORDER BY d [KEYWORD, number:6, context:order, ori:DESC] [KEYWORD, number:7, context:nulls, ori:NULLS LAST];
 ```
 
 ---
