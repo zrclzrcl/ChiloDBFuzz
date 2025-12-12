@@ -111,11 +111,33 @@ function getDisplayName(key) {
   return logNameMap[key] || key;
 }
 
-// Config
-const savedInterval = localStorage.getItem('cd_interval');
-const savedMaxLines = localStorage.getItem('cd_maxLines');
-const interval = ref(savedInterval ? parseInt(savedInterval, 10) : 500);
-const maxLines = ref(savedMaxLines ? parseInt(savedMaxLines, 10) : 500);
+// Config - 从 localStorage 恢复用户设置
+function loadSavedInterval() {
+  const saved = localStorage.getItem('cd_interval');
+  if (saved) {
+    const val = parseInt(saved, 10);
+    // 验证是否为有效的选项值
+    if ([200, 500, 1000, 2000, 5000].includes(val)) {
+      return val;
+    }
+  }
+  return 500; // 默认值
+}
+
+function loadSavedMaxLines() {
+  const saved = localStorage.getItem('cd_maxLines');
+  if (saved) {
+    const val = parseInt(saved, 10);
+    // 验证是否为有效的选项值
+    if ([200, 500, 800].includes(val)) {
+      return val;
+    }
+  }
+  return 500; // 默认值
+}
+
+const interval = ref(loadSavedInterval());
+const maxLines = ref(loadSavedMaxLines());
 const panels = reactive([]);
 
 // State
@@ -141,7 +163,8 @@ function setStick(key, val){
 function isAtBottom(el){ if(!el) return true; return (el.scrollHeight - el.scrollTop - el.clientHeight) <= 8; }
 function scrollToBottom(el){ if(!el) return; el.scrollTop = el.scrollHeight; }
 
-const tsRegex = /(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?\b)|(\b\d{2}:\d{2}:\d{2}\b)/g;
+// 时间戳正则：匹配 2025-12-12 07:36:59,564 或 2025-12-12 07:36:59.564 或 2025-12-12 07:36:59 或 07:36:59
+const tsRegex = /(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}[,\.]\d+\b)|(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}\b)|(\b\d{2}:\d{2}:\d{2}\b)/g;
 
 function hueForAge(ageSec){
   if (ageSec <= 2) return 140; 
@@ -232,7 +255,8 @@ function highlightSearch(text, query) {
 
 function parseLineAgeSecFromContent(line, now){
   // 创建新的正则表达式实例，避免全局正则的lastIndex状态问题
-  const localTsRegex = /(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?\b)|(\b\d{2}:\d{2}:\d{2}\b)/g;
+  // 匹配格式: 2025-12-12 07:36:59,564 或 2025-12-12 07:36:59.564 或 2025-12-12 07:36:59 或 07:36:59
+  const localTsRegex = /(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}[,\.]\d+\b)|(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}\b)|(\b\d{2}:\d{2}:\d{2}\b)/g;
   const matches = line.match(localTsRegex);
   if (!matches || matches.length === 0) return null;
   
@@ -250,8 +274,8 @@ function parseLineAgeSecFromContent(line, now){
         d = new Date(d.getTime() - 24 * 60 * 60 * 1000);
       }
     } else {
-      // 完整日期时间格式
-      const normalized = t.replace(' ', 'T').replace(/\//g, '-');
+      // 完整日期时间格式，将逗号替换为点（Python日志格式用逗号分隔毫秒）
+      const normalized = t.replace(' ', 'T').replace(/\//g, '-').replace(',', '.');
       d = new Date(normalized);
     }
     if (d && !isNaN(d.getTime())){
@@ -298,7 +322,8 @@ function colorizeLineObj(lineObj, fallbackHue, now, searchQ = '') {
   }
   
   // 使用新的正则实例避免全局状态问题
-  const highlightTsRegex = /(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?\b)|(\b\d{2}:\d{2}:\d{2}\b)/g;
+  // 匹配格式: 2025-12-12 07:36:59,564 或 2025-12-12 07:36:59.564 或 2025-12-12 07:36:59 或 07:36:59
+  const highlightTsRegex = /(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}[,\.]\d+\b)|(\b\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}\b)|(\b\d{2}:\d{2}:\d{2}\b)/g;
   const withTs = escaped.replace(highlightTsRegex, (m) => `<span class="timestamp" style="color:${color}; text-shadow:${shadow}">${m}</span>`);
   return `<span style="color:${color}; text-shadow:${shadow}">${withTs}</span>`;
 }

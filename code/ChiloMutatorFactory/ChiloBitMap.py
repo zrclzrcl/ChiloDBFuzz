@@ -1,14 +1,34 @@
 #用于存储全局bitmap的类
+import array
 
 class BitMap:
+    """
+    高效的位图实现，使用 array 模块减少内存开销。
+    
+    内存优化说明：
+    - Python list 中每个 int 约 28 字节
+    - array('Q') 每个元素仅 8 字节
+    - array('L') 每个元素仅 4 字节
+    - array('B') 每个元素仅 1 字节
+    
+    对于 mapsize=65536:
+    - 原 list 方案: 3 * 65536 * 28 ≈ 5.5 MB
+    - 优化后: 65536*8 + 65536*4 + 65536*1 ≈ 0.85 MB
+    """
+    
     def __init__(self, mapsize):
         #维护一个全局的BitMap
         self.map_size = mapsize
-        self._sum_bitmap = [0] * self.map_size    # 总命中次数(记录的是次数总和，int不封顶)
-        self._cumulative_bitmap = [0] * self.map_size    # 累计的“测试用例命中次数”（每有一个测试用例命中过该槽位，+1）
-        self._bool_bitmap = [0] * self.map_size    # 是否命中过（0/1）
+        # 使用 array 替代 list 以节省内存
+        # 'Q' = unsigned long long (8 bytes), 支持大数值累加
+        # 'L' = unsigned long (4 bytes), 足够存储测试用例命中次数
+        # 'B' = unsigned char (1 byte), 只需存储 0/1
+        self._sum_bitmap = array.array('Q', [0] * self.map_size)    # 总命中次数
+        self._cumulative_bitmap = array.array('L', [0] * self.map_size)    # 测试用例命中次数
+        self._bool_bitmap = array.array('B', [0] * self.map_size)    # 是否命中过（0/1）
         self.hit_count = 0    # _bool_bitmap中为1的边数量
         # 最近一次读取的原始位图快照
+        self._last_snapshot = None
 
 
     def add_bitmap(self, bitmap):
