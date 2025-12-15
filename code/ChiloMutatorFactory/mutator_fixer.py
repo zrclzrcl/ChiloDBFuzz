@@ -138,6 +138,7 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
         sematic_fix_use_time_all = 0
         sematic_mask_error_count = 0
         sematic_random_error_count = 0
+        sematic_return_type_error_count = 0  # 返回值类型错误次数
         semantic_error_count = 0
         semantic_error_llm_use_time = 0
         semantic_error_llm_count = 0
@@ -184,6 +185,7 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                         invalid_return_count += 1
                 if invalid_return_count > 0:
                     is_semantics_correct[2] = False
+                    sematic_return_type_error_count += 1
                     fix_reason.append(f"The mutate() function returned None or non-string value {invalid_return_count} times out of {len(mutate_result)} calls. The mutate() function MUST return a valid SQL string. Make sure there is a 'return' statement that returns the mutated SQL string.")
                     my_chilo_factory.mutator_fixer_logger.warning(
                         f"seed_id：{fix_seed_id}，返回值类型检测失败: {invalid_return_count}/{len(mutate_result)} 次返回了 None 或非字符串")
@@ -290,6 +292,7 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                                                       syntax_error_count, syntax_llm_format_error_count, syntax_fix_use_time_llm,
                                                       syntax_llm_count, syntax_fix_up_token_all, syntax_fix_down_token_all,
                                                       sematic_fix_use_time_all, sematic_mask_error_count, sematic_random_error_count,
+                                                      sematic_return_type_error_count,
                                                       semantic_error_count, semantic_error_llm_use_time, semantic_error_llm_count,
                                                       semantic_llm_format_error, semantic_up_token_all, semantic_down_token_all, 
                                                       my_chilo_factory.fix_mutator_list.qsize(), False,
@@ -382,6 +385,7 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                                           syntax_error_count, syntax_llm_format_error_count, syntax_fix_use_time_llm,
                                           syntax_llm_count, syntax_fix_up_token_all, syntax_fix_down_token_all,
                                           sematic_fix_use_time_all, sematic_mask_error_count, sematic_random_error_count,
+                                          sematic_return_type_error_count,
                                           semantic_error_count, semantic_error_llm_use_time, semantic_error_llm_count,
                                           semantic_llm_format_error, semantic_up_token_all, semantic_down_token_all, left_fix_queue_size,
                                           at_last_is_all_correct,mask_count, calculated_similarity, unique_count, total_count)

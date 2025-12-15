@@ -239,7 +239,8 @@ class ChiloFactory:
                              "syntax_use_time","syntax_error_count", "syntax_format_error_time",
                              "syntax_llm_use_time","syntax_llm_count","syntax_up_token",
                              "syntax_down_token","sematic_use_time", "semantic_mask_error_count",
-                             "semantic_random_error_count","semantic_error_count",
+                             "semantic_random_error_count", "semantic_return_type_error_count",
+                             "semantic_error_count",
                              "semantic_error_llm_use_time",
                              "semantic_error_llm_count","semantic_llm_format_error",
                              "semantic_up_token", "semantic_down_token","left_fix_queue_count", "at_last_is_all_correct",
@@ -378,6 +379,7 @@ class ChiloFactory:
                                 all_llm_count, syntax_use_time, syntax_error_count, syntax_format_error_time,
                                 syntax_llm_use_time,syntax_llm_count,syntax_up_token, syntax_down_token,
                                 sematic_use_time, semantic_mask_error_count, semantic_random_error_count,
+                                semantic_return_type_error_count,
                                 semantic_error_count,semantic_error_llm_use_time,
                                 semantic_error_llm_count,
                                 semantic_llm_format_error,semantic_up_token, semantic_down_token,left_fix_queue_count,
@@ -401,6 +403,7 @@ class ChiloFactory:
         :param sematic_use_time: 语义修复所用时间
         :param semantic_mask_error_count: 语义掩码错误出现的次数
         :param semantic_random_error_count: 语义随机错误出现的次数
+        :param semantic_return_type_error_count: 返回值类型错误出现的次数
         :param semantic_error_count: 语义错误次数
         :param semantic_error_llm_use_time: 修复语义错误LLM所用时间
         :param semantic_error_llm_count: 修复语义错误LLM的调用次数
@@ -417,7 +420,7 @@ class ChiloFactory:
         with self.csv_lock:  # 加锁保护CSV写入
             with open(self.mutator_fixer_csv_path, mode='a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow([real_time, real_time-self.start_time, seed_id, mutator_id, need_mutate_count, all_use_time,  all_llm_count, syntax_use_time,syntax_error_count, syntax_format_error_time,syntax_llm_use_time,syntax_llm_count,syntax_up_token, syntax_down_token,sematic_use_time, semantic_mask_error_count, semantic_random_error_count, semantic_error_count, semantic_error_llm_use_time,semantic_error_llm_count,semantic_llm_format_error,semantic_up_token, semantic_down_token,left_fix_queue_count,at_last_is_all_correct, mask_count, similarity, unique_count, total_count])
+                writer.writerow([real_time, real_time-self.start_time, seed_id, mutator_id, need_mutate_count, all_use_time,  all_llm_count, syntax_use_time,syntax_error_count, syntax_format_error_time,syntax_llm_use_time,syntax_llm_count,syntax_up_token, syntax_down_token,sematic_use_time, semantic_mask_error_count, semantic_random_error_count, semantic_return_type_error_count, semantic_error_count, semantic_error_llm_use_time,semantic_error_llm_count,semantic_llm_format_error,semantic_up_token, semantic_down_token,left_fix_queue_count,at_last_is_all_correct, mask_count, similarity, unique_count, total_count])
 
     def write_structural_mutator_csv(self, real_time, seed_id, new_seed_id,
                                      all_use_time, llm_up_token, llm_down_token, llm_count,
