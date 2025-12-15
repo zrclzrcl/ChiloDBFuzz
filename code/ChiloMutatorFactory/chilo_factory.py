@@ -589,6 +589,15 @@ class ChiloFactory:
         self.all_seed_list.seed_list[mutator.seed_id].mutate_time += 1
         self.main_logger.info(
             f"调用变异完成，为该种子的第{self.all_seed_list.seed_list[mutator.seed_id].mutate_time}次变异 变异的目标种子id:{mutator.seed_id}，变异器编号为：{mutator.mutator_id}")
+        
+        # 检查变异结果是否为有效字符串，防止 TypeError: encoding without a string argument
+        if mutate_testcase is None:
+            self.main_logger.error(f"变异器返回了 None，种子id:{mutator.seed_id}，变异器编号:{mutator.mutator_id}")
+            mutate_testcase = ""  # 使用空字符串作为fallback
+        elif not isinstance(mutate_testcase, str):
+            self.main_logger.warning(f"变异器返回了非字符串类型 {type(mutate_testcase)}，尝试转换")
+            mutate_testcase = str(mutate_testcase)
+        
         return bytearray(mutate_testcase, "utf-8", errors="ignore"), is_by_random, mutator.seed_id, mutator.mutator_id, is_mutator_error_occur, is_from_structural_mutator
 
 

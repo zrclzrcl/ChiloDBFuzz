@@ -172,13 +172,31 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
                 sematic_fix_start_time = time.time()
                 my_chilo_factory.mutator_fixer_logger.info(
                     f"seed_id：{fix_seed_id}，试运行成功，语法正确，准备检验语义正确性")
-                is_semantics_correct: List[None | bool] = [None, None]
+                is_semantics_correct: List[None | bool] = [None, None, None]  # 增加第三个检查项：返回值类型
                 #语义判断
-                #首先是判断，输出的东西中不能含有掩码（所有六种类型）
+                
+                # 首先检查返回值是否为有效字符串（不能是 None 或其他类型）
+                my_chilo_factory.mutator_fixer_logger.info(
+                    f"seed_id：{fix_seed_id}，正在进行返回值类型检测")
+                invalid_return_count = 0
+                for each_mutate_result in mutate_result:
+                    if each_mutate_result is None or not isinstance(each_mutate_result, str):
+                        invalid_return_count += 1
+                if invalid_return_count > 0:
+                    is_semantics_correct[2] = False
+                    fix_reason.append(f"The mutate() function returned None or non-string value {invalid_return_count} times out of {len(mutate_result)} calls. The mutate() function MUST return a valid SQL string. Make sure there is a 'return' statement that returns the mutated SQL string.")
+                    my_chilo_factory.mutator_fixer_logger.warning(
+                        f"seed_id：{fix_seed_id}，返回值类型检测失败: {invalid_return_count}/{len(mutate_result)} 次返回了 None 或非字符串")
+                else:
+                    is_semantics_correct[2] = True
+                
+                # 接下来判断，输出的东西中不能含有掩码（所有六种类型）
                 my_chilo_factory.mutator_fixer_logger.info(
                     f"seed_id：{fix_seed_id}，正在进行掩码输出语义检测")
                 mask_types = ["CONSTANT", "OPERATOR", "FUNCTION", "KEYWORD", "FRAME", "CAST_TYPE"]
                 for each_mutate_result in mutate_result:
+                    if each_mutate_result is None or not isinstance(each_mutate_result, str):
+                        continue  # 跳过无效返回值，已在上面检测过
                     for mask_type in mask_types:
                         if f"[{mask_type}," in each_mutate_result:
                             fix_reason.append(f"The generated mutated SQL statement still includes [{mask_type}, ...] mask placeholders. Use re.sub() to replace ALL mask patterns with actual SQL values.")
@@ -192,19 +210,20 @@ def fix_mutator(my_chilo_factory: chilo_factory.ChiloFactory, thread_id=0):
 
                 my_chilo_factory.mutator_fixer_logger.info(
                     f"seed_id：{fix_seed_id}，正在进行随机性语义检测")
-                #接下来就判断输出的内容的随机性
-                if len(set(mutate_result)) < my_chilo_factory.fix_mutator_try_time/4:
-                    #说明超过一半都是一样的，那可不行
+                # 接下来就判断输出的内容的随机性（只统计有效的字符串返回值）
+                valid_results = [r for r in mutate_result if r is not None and isinstance(r, str)]
+                if len(valid_results) == 0 or len(set(valid_results)) < len(valid_results) / 4:
+                    # 说明超过75%都是一样的，那可不行
                     is_semantics_correct[1] = False
                     sematic_random_error_count += 1
-                    fix_reason.append("The generated return values lack sufficient randomness, with more than 25% of the results being identical.")
+                    fix_reason.append("The generated return values lack sufficient randomness, with more than 75% of the results being identical.")
                 else:
                     is_semantics_correct[1] = True
 
-                # 计算重复率 (similarity) 用于 Ci 因子
+                # 计算重复率 (similarity) 用于 Ci 因子（只统计有效返回值）
                 # similarity = 1 - (unique_count / total_count)
-                unique_count = len(set(mutate_result))
-                total_count = len(mutate_result)
+                unique_count = len(set(valid_results)) if valid_results else 0
+                total_count = len(valid_results) if valid_results else 0
                 calculated_similarity = 1.0 - (unique_count / total_count) if total_count > 0 else 0.0
                 my_chilo_factory.mutator_fixer_logger.info(
                     f"seed_id:{fix_seed_id}，重复率计算: unique={unique_count}/{total_count}, similarity={calculated_similarity:.4f}")
