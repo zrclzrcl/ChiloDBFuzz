@@ -75,6 +75,15 @@ def main():
             cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -- /home/ossfuzz @@"
         else:
             cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -V {fuzz_time}  -- /home/ossfuzz @@"
+    elif target_dbms == "MySQL":
+        # 处理内存限制参数（ASAN 需要设置为 none）
+        mem_limit_arg = "" if testcase_memory_limit == "none" else f"-m {testcase_memory_limit}"
+
+        time_limit_arg = "" if testcase_time_limit == "none" else f"-t {testcase_time_limit}"
+        if fuzz_time < 0:
+            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -- ./SQUIRREL/db_driver"
+        else:
+            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -V {fuzz_time}  -- ./SQUIRREL/db_driver"
     else:
         raise Exception(f"Unsupported DBMS, plz check fuzz_config.yaml. TARGET_DBMS must in {can_fuzz_dbms_list}")
 
