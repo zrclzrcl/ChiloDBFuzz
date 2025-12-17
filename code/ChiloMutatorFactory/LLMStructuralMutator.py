@@ -1,6 +1,141 @@
 import time
+import random
 
 from .chilo_factory import ChiloFactory
+from .crash_library import CrashLibrary
+
+
+def _get_compact_structural_prompt(sql: str, target_dbms: str, dbms_version: str, crash_examples: str = "") -> str:
+    """
+    精简版结构化变异提示词 (基于SOFT论文优化)
+    
+    核心发现：87.4%的SQL函数漏洞由边界值参数处理不当引起
+    - 边界字面量 (29.5%): 直接使用极值
+    - 边界类型转换 (23.3%): 隐式/显式类型转换  
+    - 边界嵌套函数 (34.6%): 函数返回极值结果
+    """
+    crash_section = ""
+    if crash_examples:
+        crash_section = f"""
+---
+
+## 🔥 CRASH-INDUCING PATTERNS (Real Bugs!)
+
+These SQL patterns have triggered crashes in {target_dbms}. Use similar techniques:
+
+{crash_examples}
+
+**Apply these crash patterns** when enriching the SQL.
+
+"""
+
+    prompt = f"""
+You are a DBMS fuzzing expert. Perform **STRUCTURAL MUTATION** on the input SQL to maximize crash probability in {target_dbms} v{dbms_version}.
+
+**Key Insight**: Research shows 87.4% of SQL bugs come from boundary value handling.
+{crash_section}---
+
+## Goal
+
+Enrich the SQL by adding 5-15 new statements. Focus on **CRASH-INDUCING PATTERNS**:
+
+---
+
+## 10 Boundary Value Patterns (87.4% of Bugs!)
+
+### Category 1: Boundary Literals (29.5%)
+```sql
+-- Use extreme values directly
+SELECT ABS(9223372036854775807);                    -- MAX_INT
+SELECT LENGTH(REPEAT('a', 1000000));                -- Extreme length
+SELECT json_extract('{{}}', '$.a');                 -- Empty JSON
+SELECT SUBSTR('', 1, 1);                            -- Empty string
+```
+
+### Category 2: Type Casting Boundaries (23.3%)
+```sql
+-- Explicit cast to trigger conversion bugs
+SELECT CAST(99999999999999999999 AS INTEGER);       -- Overflow
+SELECT CAST('abc' AS REAL);                         -- Invalid conversion
+SELECT ABS(CAST(x AS DECIMAL(38,18)));              -- High precision
+```
+
+### Category 3: Nested Function Boundaries (34.6%)
+```sql
+-- Functions returning boundary values as arguments
+SELECT json_parse(REPEAT('[', 100000));             -- Stack overflow
+SELECT ABS(POWER(2, 63));                           -- MAX_INT from function
+SELECT SUBSTR(RANDOMBLOB(1000000), 1, 10);          -- Huge blob
+```
+
+### Pattern 1.3 - Insert Repeated Digits
+```sql
+SELECT json_extract('{{"a":19999999999999999999}}', '$.a');  -- Overflow in JSON
+```
+
+### Pattern 1.4 - Malformed Formats
+```sql
+SELECT json_valid('{{"a":1}}}}}}');                 -- Unbalanced braces
+```
+
+---
+
+## Mutation Strategies (Apply 4-6)
+
+| Strategy | Crash-Focused Techniques |
+|----------|--------------------------|
+| **Subqueries** | Nested 3+ levels, correlated with boundary values |
+| **Window Functions** | `ROWS BETWEEN 9223372036854775807 PRECEDING AND ...` |
+| **CTEs** | Recursive with `POWER(2, 63)`, deep recursion |
+| **Aggregates** | `GROUP_CONCAT` with huge output, `SUM(MAX_INT)` |
+| **Type Operations** | `CAST` chains, implicit conversion via UNION |
+| **String Functions** | `REPEAT`, `PRINTF('%.*f', MAX_INT, 1.0)` |
+| **JSON/XML** | Empty objects, deeply nested, malformed |
+| **DML with Boundaries** | `INSERT` extreme values, `UPDATE` with overflow |
+
+---
+
+## Table Usage Rules
+
+1. **Existing tables**: Prefer tables already in the original SQL
+2. **New tables allowed**: You MAY create new tables, but MUST:
+   - First `CREATE TABLE` with schema
+   - Then `INSERT INTO` test data before using
+   - Example:
+     ```sql
+     CREATE TABLE aux(id INTEGER, val TEXT);
+     INSERT INTO aux VALUES(1,'a'),(9223372036854775807,'overflow');
+     SELECT * FROM aux WHERE id > POWER(2, 62);
+     ```
+3. **Self-contained**: Every referenced table must exist
+
+---
+
+## Constraints
+
+1. **Keep original SQL** - Include all original statements first
+2. **Valid syntax** - Must be valid {target_dbms} v{dbms_version}
+3. **5-15 new statements** - Focus on quality over quantity
+4. **No comments** in output SQL
+5. **Use boundary values** - Prioritize crash-inducing patterns
+
+---
+
+## Input SQL
+
+```sql
+{sql}
+```
+
+## Output
+
+Return enriched SQL:
+```sql
+(original + new boundary-value focused statements)
+```
+"""
+    return prompt
+
 
 def _get_structural_prompt(sql, target_dbms, dbms_version):
     prompt = f"""
@@ -230,14 +365,25 @@ def structural_mutator(my_chilo_factory: ChiloFactory):
     """
     structural_count = 0
     my_chilo_factory.structural_mutator_logger.info("结构化变异器已启动！")
-    system_prompt = """You are an expert SQL fuzzing and coverage engineer. Your mission is to enrich SQL test cases to maximize code coverage in database systems. You have deep knowledge of:
+    
+    # 初始化crash案例库（AFL crashes目录 + CVE案例文件夹）
+    crash_library = CrashLibrary(
+        afl_output_dir=my_chilo_factory.afl_output_dir,
+        cve_cases_path=my_chilo_factory.cve_cases_path,
+        target_dbms=my_chilo_factory.target_dbms
+    )
+    afl_count, cve_count = crash_library.get_case_count()
+    my_chilo_factory.structural_mutator_logger.info(f"Crash案例库已加载: AFL crashes={afl_count}, CVE案例={cve_count}")
+    
+    system_prompt = """You are an expert SQL fuzzing and coverage engineer. Your mission is to enrich SQL test cases to maximize code coverage AND trigger crashes in database systems. You have deep knowledge of:
 - SQL syntax and semantics across different DBMS
 - Built-in functions: aggregate, scalar, window, date/time functions
 - Query structures: subqueries, CTEs, JOINs, compound queries
 - DDL statements: CREATE TABLE/INDEX/VIEW/TRIGGER
 - DML variations: INSERT/UPDATE/DELETE with various clauses
+- Known crash patterns: integer overflow, deep recursion, edge cases
 
-Your goal is to make SQL test cases RICHER and more DIVERSE to explore more code paths in the DBMS. Add new statements, functions, and query patterns while keeping the original SQL's table structures."""
+Your goal is to make SQL test cases RICHER, more DIVERSE, and more likely to trigger bugs."""
     while True:
         structural_mutate_start_time = time.time()
         structural_count += 1
@@ -251,7 +397,20 @@ Your goal is to make SQL test cases RICHER and more DIVERSE to explore more code
         target_seed_id = need_structural_mutate["seed_id"]
         my_chilo_factory.structural_mutator_logger.info(f"结构化变异器接收到变异任务，seed_id：{target_seed_id}")
         seed_sql = my_chilo_factory.all_seed_list.seed_list[target_seed_id].seed_sql
-        prompt = _get_structural_prompt(seed_sql, my_chilo_factory.target_dbms, my_chilo_factory.target_dbms_version)   #获取提示词
+        
+        # 从crash库随机选取2-3个案例（动态读取，每次都可能获取到新的AFL crash）
+        crash_examples = crash_library.format_cases_for_prompt(count=random.randint(2, 3))
+        afl_count, cve_count = crash_library.get_case_count()  # 实时更新统计
+        
+        # 根据配置选择提示词版本
+        if my_chilo_factory.use_compact_prompt:
+            prompt = _get_compact_structural_prompt(seed_sql, my_chilo_factory.target_dbms, 
+                                                    my_chilo_factory.target_dbms_version, crash_examples)
+            my_chilo_factory.structural_mutator_logger.info(f"seed_id：{target_seed_id}，使用精简版提示词（AFL crashes={afl_count}, CVE案例={cve_count}）")
+        else:
+            prompt = _get_structural_prompt(seed_sql, my_chilo_factory.target_dbms, my_chilo_factory.target_dbms_version)
+            my_chilo_factory.structural_mutator_logger.info(f"seed_id：{target_seed_id}，使用完整版提示词")
+        
         structural_mutate_success = False
         while True:
             structural_mutate_llm_start_time = time.time()

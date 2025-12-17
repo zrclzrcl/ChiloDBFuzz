@@ -42,6 +42,16 @@ class ChiloFactory:
         with open(self.config_file_path, "r", encoding="utf-8") as f:   #读配置文件
             config = yaml.safe_load(f)
         
+        # 读取fuzz_config.yaml获取AFL输出目录
+        fuzz_config_path = os.path.join(os.path.dirname(self.config_file_path), 'fuzz_config.yaml')
+        self.afl_output_dir = "../../afl_output/"  # 默认值
+        try:
+            with open(fuzz_config_path, "r", encoding="utf-8") as f:
+                fuzz_config = yaml.safe_load(f)
+                self.afl_output_dir = fuzz_config.get('OUTPUT_DIR', self.afl_output_dir)
+        except Exception as e:
+            pass  # 如果读取失败，使用默认值
+        
         # 添加线程锁以保证线程安全
         self.mutator_id_lock = threading.Lock()  # 保护 mutator_id 分配
         self.mutator_pool_lock = threading.Lock()  # 保护 mutator_pool 操作
@@ -83,6 +93,7 @@ class ChiloFactory:
         self.mutator_fix_tmp_path = config['FILE_PATH']['MUTATOR_FIX_TMP_PATH']
         self.bitmap_path = config['FILE_PATH']['BITMAP']
         self.shm_id_path = config['FILE_PATH']['SHMID']
+        self.cve_cases_path = config['FILE_PATH'].get('CVE_CASES_PATH', '../../cve_cases/')  # CVE案例文件夹路径
 
         self.mutator_pool = ChiloMutator.ChiloMutatorPool(self.generated_mutator_path)  #一个变异器池
         self.all_seed_list = seed.AFLSeedList() #收到的所有seed的列表
@@ -93,6 +104,7 @@ class ChiloFactory:
         self.fix_mutator_try_time = config['OTHERS']['FIX_MUTATOR_TRY_TIME']
         self.semantic_fix_max_time = config['OTHERS']['SEMANTIC_FIX_MAX_TIME']
         self.times_to_structural_mutator = config['OTHERS']['TIMES_TO_STRUCTURAL_MUTATOR']
+        self.use_compact_prompt = config['OTHERS'].get('USE_COMPACT_PROMPT', True)  # 是否使用精简版提示词（基于SOFT论文优化）
         
         # 线程配置
         self.parser_thread_count = config['OTHERS'].get('PARSER_THREAD_COUNT', 1)

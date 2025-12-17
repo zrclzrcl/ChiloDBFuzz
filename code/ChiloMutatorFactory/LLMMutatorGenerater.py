@@ -6,6 +6,178 @@ import time
 from .chilo_factory import ChiloFactory
 
 
+def _get_compact_mutator_prompt(parsed_sql: str, target_dbms, dbms_version):
+    """
+    精简版变异器生成提示词 (基于SOFT论文优化)
+    
+    核心发现：87.4%的SQL函数漏洞由边界值参数处理不当引起
+    - 边界字面量 (29.5%): 直接使用极值
+    - 边界类型转换 (23.3%): 隐式/显式类型转换
+    - 边界嵌套函数 (34.6%): 函数返回极值结果
+    """
+    prompt = f"""
+You are a DBMS fuzzing expert. Generate a Python mutation module that produces crash-inducing SQL mutations.
+
+**Key Insight**: Research shows 87.4% of SQL function bugs are triggered by boundary value arguments.
+
+## Task Overview
+
+**Input**: A SQL template with 6 types of mutation masks (marked as `[TYPE, number:N, ...]`)
+**Output**: A Python module with a `mutate()` function that replaces all masks with actual values
+**Goal**: Each `mutate()` call produces a different, crash-inducing SQL statement using boundary value patterns
+
+---
+
+## 10 Boundary Value Patterns (CRITICAL for Bug Finding)
+
+### Category 1: Boundary Literals (29.5% of bugs)
+
+| Data Type | Boundary Values |
+|-----------|-----------------|
+| Integer | 0, 1, -1, ±2147483647, ±9223372036854775807 |
+| Float | 0.0, ±1e308, ±0.9999999999999999999 |
+| String | '', NULL, 'a'*10000, '{{}}'(empty JSON), '[]' |
+| Special | x'' (empty blob), RANDOMBLOB(1000000) |
+
+**Pattern 1.3 - Insert Repeated Digits**: `'{{"a":10}}' → '{{"a":19999999999999999999}}'`
+**Pattern 1.4 - Repeat Characters**: `'{{"a":1}}' → '{{"a":1}}}}}}}}'` (malformed)
+
+### Category 2: Boundary Type Castings (23.3% of bugs)
+
+**Pattern 2.1**: `f(x) → f(CAST(x AS DECIMAL(38,18)))` - Explicit cast
+**Pattern 2.3**: `SUBSTR(123, 1, 2)` - Type confusion (int where string expected)
+
+### Category 3: Boundary Nested Functions (34.6% of bugs)
+
+**Pattern 3.1**: `f(REPEAT('[', 1000000))` - Extreme length via REPEAT
+**Pattern 3.2**: `ABS(POWER(2, 63))` - Function returning boundary value
+
+---
+
+## The 6 Mask Types and Mutation Strategies
+
+### 1. CONSTANT - `[CONSTANT, number:N, type:<type>, ori:<value>]`
+
+**Integer mutations** (apply boundary patterns):
+- Boundary: 0, 1, -1, 2147483647, -2147483648, 9223372036854775807
+- AFL interesting: [-128, 127, 255, 256, 32767, 65535]
+- Bit-flip: `ori ^ (1<<random.randint(0,63))`
+- Delta: `ori + random.choice([1,-1,128,-128,32767,-32768])`
+
+**String mutations**:
+- Boundary: '', NULL, CHAR(0), CHAR(255)
+- Long: 'a'*10000, REPEAT('x', 1000000)
+- Malformed JSON/XML: '{{', '}}', '[[', ']]'
+- Pattern 1.3: Insert '9999999999' into numeric strings
+
+**Float mutations**:
+- Boundary: 0.0, 1e308, -1e308, 0.9999999999999999999
+- Special: inf, -inf, nan (if supported)
+
+### 2. OPERATOR - `[OPERATOR, number:N, category:<cat>, ori:<op>]`
+Same-category substitution: +↔-↔*↔/↔%, =↔!=↔<>↔<↔>
+
+### 3. FUNCTION - `[FUNCTION, number:N, category:<cat>, argc:<n>, ori:<func>]`
+Replace with same-argc function. **Apply Pattern 3.2**: Consider functions that return boundary values.
+- argc=1: ABS, LENGTH, UPPER, TYPEOF, HEX, SUM, COUNT, MAX, MIN
+- argc=2: SUBSTR, INSTR, NULLIF, IFNULL, COALESCE
+- argc=3: SUBSTR, REPLACE, IIF
+
+### 4. KEYWORD - `[KEYWORD, number:N, context:<ctx>, ori:<kw>]`
+| context | candidates |
+|---------|------------|
+| constraint | NOT NULL, UNIQUE, PRIMARY KEY, CHECK(1), "" |
+| conflict | OR REPLACE, OR IGNORE, OR FAIL, OR ABORT, "" |
+| modifier | DISTINCT, ALL, "" |
+| join | INNER, LEFT, LEFT OUTER, CROSS, NATURAL |
+| order | ASC, DESC |
+
+### 5. FRAME - `[FRAME, number:N, ori:<frame>]` (HIGH CRASH POTENTIAL)
+- Overflow: `ROWS BETWEEN 9223372036854775807 PRECEDING AND 9223372036854775807 FOLLOWING`
+- Negative: `ROWS BETWEEN -1 PRECEDING AND 1 FOLLOWING`
+- Zero: `ROWS BETWEEN 0 PRECEDING AND 0 FOLLOWING`
+
+### 6. CAST_TYPE - `[CAST_TYPE, number:N, ori:<type>]` (HIGH CRASH POTENTIAL)
+- Standard: INTEGER, REAL, TEXT, BLOB, NUMERIC
+- Extreme precision: DECIMAL(1000,500), DECIMAL(38,18)
+- Edge: BOOLEAN, UNSIGNED BIG INT
+
+---
+
+## Required Python Module Structure
+
+```python
+import random
+import re
+
+SQL_TEMPLATE = \"\"\"<paste input SQL with all masks>\"\"\"
+
+# Boundary values from research (87.4% of bugs)
+BOUNDARY_INT = [0, 1, -1, 2147483647, -2147483648, 9223372036854775807, -9223372036854775808]
+BOUNDARY_FLOAT = [0.0, 1e308, -1e308, 0.9999999999999999999]
+AFL_INTERESTING = [-128, 127, 255, 256, 32767, 65535, 65536, 2147483647]
+
+MASK_INFO = {{
+    1: {{'pattern': r'\\[CONSTANT, number:1, [^\\]]+\\]', 'type': 'CONSTANT', 
+        'value_type': 'int', 'ori': <original>, 'candidates': BOUNDARY_INT}},
+    # ... one entry per mask
+}}
+
+def mutate() -> str:
+    \"\"\"Generate crash-inducing SQL using boundary value patterns.\"\"\"
+    result = SQL_TEMPLATE
+    for mask_id, info in MASK_INFO.items():
+        # Apply mutation with 95% probability
+        if random.random() < 0.95:
+            new_value = _mutate_by_type(info)
+        else:
+            new_value = info['ori']
+        formatted = _format_value(new_value, info)
+        result = re.sub(info['pattern'], formatted, result, count=1)
+    return result
+```
+
+---
+
+## Mutation Strategy Weights (for CONSTANT type)
+
+1. **Boundary values** (30%): Direct use of boundary constants
+2. **Delta mutation** (20%): `ori + random.choice([1,-1,128,-128,32767])`
+3. **Bit-flip** (15%): `ori ^ (1 << random.randint(0, 63))`
+4. **AFL interesting** (15%): From predefined interesting value list
+5. **Pattern 1.3** (10%): Insert '9999999999' for string types
+6. **Range random** (10%): `random.randint(-2**63, 2**63-1)`
+
+---
+
+## Output Requirements
+
+1. **Complete replacement**: No `[CONSTANT, ...]` masks remain in output
+2. **Valid SQL syntax**: Properly quoted strings, unquoted NULL/numbers
+3. **High diversity**: Different output each `mutate()` call
+4. **Standard library only**: random, re, string - no external deps
+5. **No side effects**: No print, no file I/O
+
+---
+
+## Target DBMS: {target_dbms} v{dbms_version}
+
+## Input SQL Template
+
+```sql
+{parsed_sql}
+```
+
+## Output
+
+Provide ONLY the complete Python module:
+```python
+<your implementation>
+```
+"""
+    return prompt
+
+
 def  _get_constant_mutator_prompt(parsed_sql:str, target_dbms, dbms_version):
     prompt = f"""
 Instruction: You are an **AGGRESSIVE DBMS fuzzing and mutation expert**. The input is a SQL test case with mutation masks. Your task is to generate a Python module that produces **CRASH-INDUCING** mutations.
@@ -442,7 +614,15 @@ def chilo_mutator_generator(my_chilo_factory: ChiloFactory):
         my_chilo_factory.mutator_generator_logger.info(f"变异器生成任务接收完毕 任务目标   seed_id：{generate_target['seed_id']}    变异次数：{generate_target['mutate_time']}")
         mutate_time = generate_target['mutate_time']
         parsed_sql = my_chilo_factory.all_seed_list.seed_list[generate_target['seed_id']].parser_content   #拿出对应的已经解析过的内容
-        prompt = _get_constant_mutator_prompt(parsed_sql, my_chilo_factory.target_dbms, my_chilo_factory.target_dbms_version)  #构建提示词
+        
+        # 根据配置选择提示词版本
+        if my_chilo_factory.use_compact_prompt:
+            prompt = _get_compact_mutator_prompt(parsed_sql, my_chilo_factory.target_dbms, my_chilo_factory.target_dbms_version)
+            my_chilo_factory.mutator_generator_logger.info(f"seed_id：{generate_target['seed_id']}  使用精简版提示词（基于SOFT论文边界值模式）")
+        else:
+            prompt = _get_constant_mutator_prompt(parsed_sql, my_chilo_factory.target_dbms, my_chilo_factory.target_dbms_version)
+            my_chilo_factory.mutator_generator_logger.info(f"seed_id：{generate_target['seed_id']}  使用完整版提示词")
+        
         mutator_code_success = False
         while True:
             start_time = time.time()
