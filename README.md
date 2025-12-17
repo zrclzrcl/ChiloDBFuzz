@@ -30,7 +30,7 @@ ChiloDBFuzz的镜像需要从dockerfile构建，下面是具体的构建命令�
 
 - DuckDB：...
 
-
+---
 SQLite：
 
 如果想要运行CHILO/SQUIRREL
@@ -46,6 +46,16 @@ cd {repo_path}
 cd ./docker/sqlite
 docker build -t clccdbfuzz:sqlite -f clcc_dockerfile .
 ```
+---
+
+MySQL:
+```bash
+cd {repo_path}
+cd ./docker/mysql
+docker build -t chilodbfuzz:sqlite .
+```
+
+---
 
 ### 容器启动和测试启动
 
