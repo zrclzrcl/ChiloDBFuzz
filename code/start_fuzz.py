@@ -21,7 +21,7 @@ def main():
     testcase_time_limit = config["TESTCASE_TIME_LIMIT"]     #测试用例的时间限制（s）
     testcase_memory_limit = config["TESTCASE_MEMORY_LIMIT"]     #测试用例的内存限制（MB）
 
-    can_fuzz_dbms_list = ["SQLite"]
+    can_fuzz_dbms_list = ["SQLite", "MySQL"]
 
     if target_dbms not in can_fuzz_dbms_list:
         raise Exception(f"Unsupported DBMS, plz check fuzz_config.yaml. TARGET_DBMS must in {can_fuzz_dbms_list}")
@@ -81,9 +81,9 @@ def main():
 
         time_limit_arg = "" if testcase_time_limit == "none" else f"-t {testcase_time_limit}"
         if fuzz_time < 0:
-            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -- ./SQUIRREL/db_driver"
+            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -- /home/Squirrel/build/db_driver"
         else:
-            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -V {fuzz_time}  -- ./SQUIRREL/db_driver"
+            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -V {fuzz_time}  -- /home/Squirrel/build/db_driver"
     else:
         raise Exception(f"Unsupported DBMS, plz check fuzz_config.yaml. TARGET_DBMS must in {can_fuzz_dbms_list}")
 
