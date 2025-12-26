@@ -17,7 +17,7 @@ ChiloDBFuzz的镜像需要从dockerfile构建，下面是具体的构建命令�
 参考文献：Squirrel: Testing Database Management Systems with Language Validity and Coverage Feedback
 
 - SQLite：3.30.1
-- MySQL：8.0.0
+- MySQL：8.0.2
 - MariaDB：10.5.3
 
 对于PostgreSQL SQUIRREL中没有注明使用的DBMS版本，我们选择的版本为SQLRight论文中的相同版本
