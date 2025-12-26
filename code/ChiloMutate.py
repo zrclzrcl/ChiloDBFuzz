@@ -11,6 +11,7 @@ fuzz_number = 0
 last_bitmap_save = time.time()
 is_chilo_fuzzed = False     #避免每次运行都postrun 只chilo的postrun就行了
 left_fuzz_count = 0
+structural_consecutive_count = 0
 
 def init(seed):
     """
@@ -81,6 +82,7 @@ def fuzz_count(buf):
     """
     global fuzz_count_number
     global left_fuzz_count
+    global structural_consecutive_count
     fuzz_count_number += 1
     #应该采用队列的设计，先放入工厂的队列中，等待加工
     global chilo_factory
@@ -93,14 +95,37 @@ def fuzz_count(buf):
     q_struct = chilo_factory.wait_exec_structural_list
     with q_struct.mutex:
         if len(q_struct.queue) > 0:
-            chilo_factory.next_fuzz_strategy = 0
-            chilo_factory.main_logger.info("有结构化变异待执行，将执行结构化变异，变异次数1")
-            left_fuzz_count = 1
-            chilo_factory.current_thompson_score = -1
-            chilo_factory.current_Ai = -1
-            chilo_factory.current_Bi = -1
-            chilo_factory.current_Ci = -1
-            return 1
+            limit = chilo_factory.structural_consecutive_limit
+            if limit > 0 and structural_consecutive_count >= limit:
+                q = chilo_factory.wait_exec_mutator_list
+                with q.mutex:
+                    has_wait_exec = len(q.queue) > 0
+                has_pool = len(chilo_factory.mutator_pool.mutator_list) > 0
+                if has_wait_exec or has_pool:
+                    chilo_factory.main_logger.info(
+                        f"结构化变异已连续选择{structural_consecutive_count}次，且其他策略可用，跳过本次结构化")
+                    # 继续走后续逻辑选择其他策略
+                    pass
+                else:
+                    chilo_factory.next_fuzz_strategy = 0
+                    chilo_factory.main_logger.info("有结构化变异待执行，将执行结构化变异，变异次数1")
+                    left_fuzz_count = 1
+                    structural_consecutive_count += 1
+                    chilo_factory.current_thompson_score = -1
+                    chilo_factory.current_Ai = -1
+                    chilo_factory.current_Bi = -1
+                    chilo_factory.current_Ci = -1
+                    return 1
+            else:
+                chilo_factory.next_fuzz_strategy = 0
+                chilo_factory.main_logger.info("有结构化变异待执行，将执行结构化变异，变异次数1")
+                left_fuzz_count = 1
+                structural_consecutive_count += 1
+                chilo_factory.current_thompson_score = -1
+                chilo_factory.current_Ai = -1
+                chilo_factory.current_Bi = -1
+                chilo_factory.current_Ci = -1
+                return 1
 
     # 否则：根据 wait_exec_mutator_list 前缀中连续同一对象实例的个数返回
     q = chilo_factory.wait_exec_mutator_list
@@ -151,6 +176,7 @@ def fuzz_count(buf):
             
             #注意，这里就不能再返回mutatetime了，而是在这里确定变异次数和能量调度
             left_fuzz_count = energy
+            structural_consecutive_count = 0
             #这里我在想要不要
             return energy
         else:
@@ -159,6 +185,7 @@ def fuzz_count(buf):
             if chilo_factory.parser_thread_count > 0:
                 chilo_factory.main_logger.info("chilo刚启动，再等一等")
             left_fuzz_count = 0
+            structural_consecutive_count = 0
             return 0    #AFL++暂时跳过，等待一下... 
     first_item = internal[0]
     consecutive = 1
@@ -170,6 +197,7 @@ def fuzz_count(buf):
     chilo_factory.next_fuzz_strategy = 1
     chilo_factory.main_logger.info("无结构化，有待第一次执行的变异器，将执行待执行变异器，变异次数{consecutive}")
     left_fuzz_count = consecutive
+    structural_consecutive_count = 0
     return consecutive    #这里就是待执行变异器，需要返回连续的个数
 
 def splice_optout():

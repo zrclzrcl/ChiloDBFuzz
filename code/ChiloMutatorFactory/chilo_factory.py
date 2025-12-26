@@ -78,6 +78,10 @@ class ChiloFactory:
         if not isinstance(self.parser_stack_max_size, int) or self.parser_stack_max_size <= 0:
             raise ValueError("配置项 OTHERS.PARSER_STACK_MAX_SIZE 必须为大于 0 的整数")
 
+        self.wait_exec_structural_queue_max_size = config['OTHERS']['WAIT_EXEC_STRUCTURAL_QUEUE_MAX_SIZE']
+        if not isinstance(self.wait_exec_structural_queue_max_size, int) or self.wait_exec_structural_queue_max_size <= 0:
+            raise ValueError("配置项 OTHERS.WAIT_EXEC_STRUCTURAL_QUEUE_MAX_SIZE 必须为大于 0 的整数")
+
         self.wait_parse_list = queue.Queue()   #等待SQL解析的队列
         self.wait_mutator_generate_list = queue.Queue(maxsize=self.mutator_generator_queue_max_size)    #等待变异器生成的队列
         self.wait_exec_mutator_list = queue.Queue() #等待执行的队列
@@ -85,7 +89,7 @@ class ChiloFactory:
         # 变异器修复队列使用有界队列，便于在上游进行背压判断
         self.fix_mutator_queue_max_size = config['OTHERS']['FIX_MUTATOR_QUEUE_MAX_SIZE']
         self.fix_mutator_list = queue.Queue(maxsize=self.fix_mutator_queue_max_size)   #等待修复队列
-        self.wait_exec_structural_list = queue.Queue()   #等待执行结构性变异的队列 (优先)
+        self.wait_exec_structural_list = queue.Queue(maxsize=self.wait_exec_structural_queue_max_size)   #等待执行结构性变异的队列 (优先)
 
         self.parsed_sql_path = config['FILE_PATH']['PARSED_SQL_PATH']
         self.generated_mutator_path = config['FILE_PATH']['GENERATED_MUTATOR_PATH']
@@ -104,6 +108,9 @@ class ChiloFactory:
         self.fix_mutator_try_time = config['OTHERS']['FIX_MUTATOR_TRY_TIME']
         self.semantic_fix_max_time = config['OTHERS']['SEMANTIC_FIX_MAX_TIME']
         self.times_to_structural_mutator = config['OTHERS']['TIMES_TO_STRUCTURAL_MUTATOR']
+        self.structural_consecutive_limit = config['OTHERS'].get('STRUCTURAL_CONSECUTIVE_LIMIT', 0)
+        if not isinstance(self.structural_consecutive_limit, int) or self.structural_consecutive_limit < 0:
+            raise ValueError("配置项 OTHERS.STRUCTURAL_CONSECUTIVE_LIMIT 必须为大于等于 0 的整数")
         self.use_compact_prompt = config['OTHERS'].get('USE_COMPACT_PROMPT', True)  # 是否使用精简版提示词（基于SOFT论文优化）
         
         # 线程配置

@@ -13,3 +13,4 @@ ChiloDisco/frontend/.env.local
 ChiloDisco/frontend/.env*.local
 ChiloDisco/__pycache__
 crash_analysis.md
+code/SQUIRREL/debug_db_driver.cc
