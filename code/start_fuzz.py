@@ -21,7 +21,7 @@ def main():
     testcase_time_limit = config["TESTCASE_TIME_LIMIT"]     #测试用例的时间限制（s）
     testcase_memory_limit = config["TESTCASE_MEMORY_LIMIT"]     #测试用例的内存限制（MB）
 
-    can_fuzz_dbms_list = ["SQLite", "MySQL", "MariaDB"]
+    can_fuzz_dbms_list = ["SQLite", "MySQL", "MariaDB", "DuckDB"]
 
     if target_dbms not in can_fuzz_dbms_list:
         raise Exception(f"Unsupported DBMS, plz check fuzz_config.yaml. TARGET_DBMS must in {can_fuzz_dbms_list}")
@@ -90,9 +90,9 @@ def main():
 
         time_limit_arg = "" if testcase_time_limit == "none" else f"-t {testcase_time_limit}"
         if fuzz_time < 0:
-            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -- /home/duckdb/build/release/duckdb -f @@"
+            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -- /home/duckdb/build/relassert/duckdb -init /dev/null -c \".read @@\""
         else:
-            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -V {fuzz_time}  -- /home/duckdb/build/release/duckdb -init /dev/null -f @@"
+            cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -V {fuzz_time}  -- /home/duckdb/build/relassert/duckdb -init /dev/null -c \".read @@\""
     else:
         raise Exception(f"Unsupported DBMS, plz check fuzz_config.yaml. TARGET_DBMS must in {can_fuzz_dbms_list}")
 

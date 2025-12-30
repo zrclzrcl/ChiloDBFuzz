@@ -9,7 +9,7 @@ IS_USE_CHILO: True #是否使用Chilo变异器
 IS_USE_SQUIRREL: True #是否使用Squirrel变异器
 SQUIRREL_LIB_PATH: "/home/Squirrel/build/libpostgresql_mutator.so"
 SQUIRREL_CONFIG_PATH: "./SQUIRREL/config_duckdb.yml"
-MAPSIZE: 898752
+MAPSIZE: 2090000
 
-TESTCASE_TIME_LIMIT: none     #��~K��~U�~T���~K�~Z~D�~W��~W��~Y~P�~H���~Hs��~I
+TESTCASE_TIME_LIMIT: 6000     #测试用例的时间限制（s）
 TESTCASE_MEMORY_LIMIT: none     
