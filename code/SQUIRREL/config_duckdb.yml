@@ -1,0 +1,6 @@
+---
+required: ["init_lib", "data_lib", "db"]
+should_exist: ["init_lib", "data_lib"]
+init_lib: ./SQUIRREL/pqsql_init_lib
+data_lib: ./SQUIRREL/pqsql_data_lib
+db: postgresql

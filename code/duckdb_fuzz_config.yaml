@@ -1,0 +1,15 @@
+TARGET_DBMS: "DuckDB"
+INPUT_DIR: "../docker/duckdb/BGSeed/"
+OUTPUT_DIR: "../../afl_output/"
+FUZZER_PATH: "../AFLplusplus/afl-fuzz"
+CHILO_MUTATOR_PATH: "./"
+#CHILO_CONDA_PYTHON_PATH: "/home/conda/envs/chilo/bin/python"
+FUZZ_TIME: 7210
+IS_USE_CHILO: True #是否使用Chilo变异器
+IS_USE_SQUIRREL: True #是否使用Squirrel变异器
+SQUIRREL_LIB_PATH: "/home/Squirrel/build/libpostgresql_mutator.so"
+SQUIRREL_CONFIG_PATH: "./SQUIRREL/config_duckdb.yml"
+MAPSIZE: 898752
+
+TESTCASE_TIME_LIMIT: none     #��~K��~U�~T���~K�~Z~D�~W��~W��~Y~P�~H���~Hs��~I
+TESTCASE_MEMORY_LIMIT: none     
