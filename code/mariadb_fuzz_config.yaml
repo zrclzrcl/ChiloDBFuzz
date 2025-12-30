@@ -1,0 +1,15 @@
+TARGET_DBMS: "MariaDB"
+INPUT_DIR: "../docker/mariadb/BGSeed/"
+OUTPUT_DIR: "../../afl_output/"
+FUZZER_PATH: "../AFLplusplus/afl-fuzz"
+CHILO_MUTATOR_PATH: "./"
+#CHILO_CONDA_PYTHON_PATH: "/home/conda/envs/chilo/bin/python"
+FUZZ_TIME: 7210
+IS_USE_CHILO: True #�~X��~P�使�~T�Chilo��~[��~L�~O~X��~B
+IS_USE_SQUIRREL: True #�~X��~P�使�~T�Squirrel��~[��~L�~O~X��~B
+SQUIRREL_LIB_PATH: "/home/Squirrel/build/libmysql_mutator.so"
+SQUIRREL_CONFIG_PATH: "./SQUIRREL/config_mariadb.yml"
+MAPSIZE: 516000
+
+TESTCASE_TIME_LIMIT: 6000     #��~K��~U�~T���~K�~Z~D�~W��~W��~Y~P�~H���~Hs��~I
+TESTCASE_MEMORY_LIMIT: none     

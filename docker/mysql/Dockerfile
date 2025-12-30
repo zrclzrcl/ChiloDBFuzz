@@ -103,7 +103,8 @@ RUN cmake ../mysql/ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=../boost \
     -DCMAKE_C_FLAGS="-I/usr/include/tirpc" \
     -DCMAKE_CXX_FLAGS="-I/usr/include/tirpc" \
     -DCMAKE_EXE_LINKER_FLAGS="-ltirpc"\
-    -DCMAKE_CXX_STANDARD=14
+    -DCMAKE_CXX_STANDARD=14 \
+    -DCMAKE_BUILD_TYPE=Debug
 
 RUN make && sudo cmake --install . --prefix /usr/local/mysql/
 

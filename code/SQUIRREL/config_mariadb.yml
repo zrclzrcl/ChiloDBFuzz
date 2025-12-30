@@ -5,7 +5,7 @@ init_lib: ./SQUIRREL/mysql_init_lib
 data_lib: ./SQUIRREL/global_data_lib_mysql
 db: mysql
 passwd: ''
-user_name: chilo
+user_name: root
 host: localhost
 sock_path: /tmp/mysql.sock
 db_prefix: test

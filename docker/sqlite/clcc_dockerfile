@@ -60,4 +60,4 @@ RUN $CXX $ASAN_LDFLAGS \
 ADD ./BGSeed/  /home/Squirrel/data/fuzz_root/set_seed/
 ADD ./clcc_src/run_with_no_M.py /home/Squirrel/scripts/utils/clcc_run.py
 WORKDIR /home/Squirrel/scripts/utils
-#ENTRYPOINT python3 run.py sqlite ../../data/fuzz_root/input
+#ENTRYPOINT python3 run.py sqlite ../../data/fuzz_root/input121
