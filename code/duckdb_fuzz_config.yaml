@@ -7,7 +7,7 @@ CHILO_MUTATOR_PATH: "./"
 FUZZ_TIME: 7210
 IS_USE_CHILO: True #是否使用Chilo变异器
 IS_USE_SQUIRREL: True #是否使用Squirrel变异器
-SQUIRREL_LIB_PATH: "/home/Squirrel/build/libpostgresql_mutator.so"
+SQUIRREL_LIB_PATH: "./SQUIRREL/libpostgresql_mutator.so"
 SQUIRREL_CONFIG_PATH: "./SQUIRREL/config_duckdb.yml"
 MAPSIZE: 2090000
 
