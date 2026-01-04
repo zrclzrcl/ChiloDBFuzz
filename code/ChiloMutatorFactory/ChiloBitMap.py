@@ -22,10 +22,10 @@ class BitMap:
         self.map_size = mapsize
         # 使用 array 替代 list 以节省内存
         # 'Q' = unsigned long long (8 bytes), 支持大数值累加
-        # 'L' = unsigned long (4 bytes), 足够存储测试用例命中次数
+        # 'I' = unsigned int (4 bytes, 跨平台一致), 足够存储测试用例命中次数
         # 'B' = unsigned char (1 byte), 只需存储 0/1
         self._sum_bitmap = array.array('Q', [0] * self.map_size)    # 总命中次数
-        self._cumulative_bitmap = array.array('L', [0] * self.map_size)    # 测试用例命中次数
+        self._cumulative_bitmap = array.array('I', [0] * self.map_size)    # 测试用例命中次数
         self._bool_bitmap = array.array('B', [0] * self.map_size)    # 是否命中过（0/1）
         self.hit_count = 0    # _bool_bitmap中为1的边数量
         # 最近一次读取的原始位图快照
