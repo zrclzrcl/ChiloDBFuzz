@@ -164,10 +164,12 @@ class AFLCoverageReader:
     
     def get_coverage_bitmap(self):
         """
-        Get the coverage bitmap as a bytes object
+        Get the coverage bitmap as a memoryview object (zero-copy)
         
         Returns:
-            bytes: Coverage bitmap (typically 65536 bytes)
+            memoryview: Coverage bitmap view (typically 65536 bytes)
+            
+        性能优化：返回 memoryview 而不是 bytes，避免 200KB 数据拷贝
         """
         self._ensure_attached()
         if self.map_ptr is None or self.map_ptr == -1:
@@ -177,8 +179,8 @@ class AFLCoverageReader:
         array_type = c_uint8 * self.map_size
         bitmap_array = ctypes.cast(self.map_ptr, POINTER(array_type)).contents
         
-        # Convert to bytes
-        return bytes(bitmap_array)
+        # Return memoryview (zero-copy, supports buffer protocol)
+        return memoryview(bitmap_array)
     
     def get_coverage_count(self):
         """

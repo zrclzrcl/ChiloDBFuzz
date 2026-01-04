@@ -182,5 +182,5 @@ docker exec -it duckdb_chilofuzz_test bash
 cd ../ChiloDisco/frontend/ && npm run dev -- --host 0.0.0.0 --port 5173
 
 #下面请在主机终端1运行
-python3 start_fuzz.py
+AFL_IGNORE_PROBLEMS=1 python3 start_fuzz.py
 ```
