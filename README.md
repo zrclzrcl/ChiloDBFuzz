@@ -73,6 +73,13 @@ cd ./docker/duckdb
 docker build -t chilodbfuzz:duckdb .
 ```
 
+PostgreSQL:
+```bash
+cd {repo_path}
+cd ./docker/postgresql
+docker build -t chilodbfuzz:postgresql .
+```
+
 ---
 ### 容器启动和测试启动
 
@@ -179,6 +186,31 @@ cd ../ChiloDisco/ && python3 app.py  #启动ChiloDisco后端
 
 #下面请在主机终端3运行
 docker exec -it duckdb_chilofuzz_test bash
+cd ../ChiloDisco/frontend/ && npm run dev -- --host 0.0.0.0 --port 5173
+
+#下面请在主机终端1运行
+AFL_IGNORE_PROBLEMS=1 python3 start_fuzz.py
+```
+
+PostgreSQL (SQUIRREL/CHILO):
+```bash
+#下面语句请在主机终端1运行
+docker run -it --cpuset-cpus="30,31" --privileged -p 5173:5173 --name postgresql_chilofuzz_test chilodbfuzz:postgresql /bin/bash
+
+# 请首先编写config.yaml以及fuzz_config.yaml
+vim ./config.yaml
+vim ./fuzz_config.yaml
+echo core | sudo tee /proc/sys/kernel/core_pattern
+# 设置 ulimit 以避免 AddressSanitizer 内存分配错误
+ulimit -c unlimited
+ulimit -v unlimited
+
+#下面请在主机终端2运行
+docker exec -it postgresql_chilofuzz_test bash
+cd ../ChiloDisco/ && python3 app.py  #启动ChiloDisco后端
+
+#下面请在主机终端3运行
+docker exec -it postgresql_chilofuzz_test bash
 cd ../ChiloDisco/frontend/ && npm run dev -- --host 0.0.0.0 --port 5173
 
 #下面请在主机终端1运行
