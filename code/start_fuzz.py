@@ -21,7 +21,7 @@ def main():
     testcase_time_limit = config["TESTCASE_TIME_LIMIT"]     #测试用例的时间限制（s）
     testcase_memory_limit = config["TESTCASE_MEMORY_LIMIT"]     #测试用例的内存限制（MB）
 
-    can_fuzz_dbms_list = ["SQLite", "MySQL", "MariaDB", "DuckDB"]
+    can_fuzz_dbms_list = ["SQLite", "MySQL", "MariaDB", "DuckDB", "PostgreSQL"]
 
     if target_dbms not in can_fuzz_dbms_list:
         raise Exception(f"Unsupported DBMS, plz check fuzz_config.yaml. TARGET_DBMS must in {can_fuzz_dbms_list}")
@@ -75,7 +75,7 @@ def main():
             cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -- /home/ossfuzz @@"
         else:
             cmd = f"{fuzzer_path} -i {input_dir} -o {output_dir} {mem_limit_arg} {time_limit_arg} -V {fuzz_time}  -- /home/ossfuzz @@"
-    elif target_dbms == "MySQL" or target_dbms == "MariaDB":
+    elif target_dbms == "MySQL" or target_dbms == "MariaDB" or target_dbms == "PostgreSQL":
         # 处理内存限制参数（ASAN 需要设置为 none）
         mem_limit_arg = "" if testcase_memory_limit == "none" else f"-m {testcase_memory_limit}"
 

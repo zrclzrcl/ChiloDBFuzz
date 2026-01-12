@@ -12,6 +12,7 @@ RUN apt-get update && apt-get -y install \
     apt-transport-https software-properties-common gnutls-dev\
     && python3 -m pip install --upgrade pip \
     && python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed\
+        numpy \
         Flask==3.0.3 \
         gunicorn==22.0.0 \
         annotated-types==0.7.0 \

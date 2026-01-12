@@ -1,0 +1,15 @@
+TARGET_DBMS: "PostgreSQL"
+INPUT_DIR: "../docker/postgresql/BGSeed/"
+OUTPUT_DIR: "../../afl_output/"
+FUZZER_PATH: "../AFLplusplus/afl-fuzz"
+CHILO_MUTATOR_PATH: "./"
+#CHILO_CONDA_PYTHON_PATH: "/home/conda/envs/chilo/bin/python"
+FUZZ_TIME: 7210
+IS_USE_CHILO: True #是否使用Chilo变异器
+IS_USE_SQUIRREL: True #是否使用Squirrel变异器
+SQUIRREL_LIB_PATH: "/home/Squirrel/build/libpgsql_mutator.so"
+SQUIRREL_CONFIG_PATH: "./SQUIRREL/config_postgresql.yml"
+MAPSIZE: 898752
+
+TESTCASE_TIME_LIMIT: 6000     #测试用例的时间限制（s）
+TESTCASE_MEMORY_LIMIT: none     

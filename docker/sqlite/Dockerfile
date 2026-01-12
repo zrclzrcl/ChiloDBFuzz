@@ -11,6 +11,7 @@ RUN apt-get update && apt-get -y install \
     python3 python3-pip python3-dev vim curl gnupg\
     && python3 -m pip install --upgrade pip \
     && python3 -m pip install --no-cache-dir \
+        numpy \
         Flask==3.0.3 \
         gunicorn==22.0.0 \
         annotated-types==0.7.0 \
